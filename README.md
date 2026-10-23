@@ -89,3 +89,14 @@ Administración puede publicar los borradores que permanezcan en el localStorage
 Después de `npm ci`, carga las variables privadas, ejecuta `npm run build:vercel` y configura `DRAFTS_LOCAL_FILE` con una ruta de trabajo local antes de `npm run start:private`. Ambos perfiles acceden al mismo archivo mientras se usa ese servidor local. Este modo se rechaza si `VERCEL` está definido.
 
 `npm test` comprueba permisos, sesiones, cálculos, lectura compartida, borradores incompletos, revisiones concurrentes, confirmaciones repetidas y bloqueo posterior a la transferencia. El adaptador SQL se ejecuta con PostgreSQL embebido (PGlite) en las pruebas; esto no sustituye la verificación de una conexión de Neon real antes de usarlo en producción.
+
+
+### Asistencia desde Google Sheets
+
+Administración dispone de **Obtener asistencia desde la planilla**, dentro de Liquidaciones. Selecciona el período y usa **Leer Google Sheets** o **Cargar Excel de la planilla** (archivo `.xlsx`, máximo 2 MB, descargado desde Archivo > Descargar > Microsoft Excel). La lectura respeta colores y las estructuras distintas de Turnos, Nocheros y ASEO. El comité no puede importar ni acceder a este endpoint.
+
+Para la lectura directa, habilita Google Sheets API en un proyecto de Google Cloud, crea una cuenta de servicio y comparte la planilla original con el correo de esa cuenta como **Lector**. Configura en Vercel las variables privadas `GOOGLE_SERVICE_ACCOUNT_EMAIL` y `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (la clave PEM, con saltos reales o `\n` escapados). Haz Redeploy. No uses prefijos públicos y no subas el JSON de credenciales al repositorio. El código solicita solo `spreadsheets.readonly` y lee únicamente la planilla configurada en `server/attendance.cjs`.
+
+La respuesta incluye origen por hoja, fecha y celda. **Usar datos** solo completa el formulario individual; conserva el anticipo del borrador existente, no guarda ni registra transferencias. Los nombres desconocidos, colores no definidos y cambios internos quedan señalados para revisión. Los trabajadores sin registros no se rellenan automáticamente. Se cuentan fechas únicas por trabajador; PV 16-24 solo identifica el lugar de trabajo.
+
+La excepción confirmada del 16 de octubre de 2026 asigna un día adicional a Manuel Araya Aparicio y ningún adicional a Cristian Allendes. Los reemplazos completos se valorizan a la tarifa diaria del trabajador (sueldo base mensual dividido por 30 para personal mensual, o tarifa diaria configurada). La cobertura compartida de Ángel Villegas, Luis San Martín y Eduardo de la Prida asigna cuatro horas a cada uno de los otros dos presentes cuando falta uno: cuatro horas equivalen a medio día de cada beneficiario. Si faltan dos y el restante cubre solo, recibe un día. Un reemplazante externo al grupo que cubre solo recibe un día. Los adicionales son imponibles y se recalculan cotizaciones; las asignaciones configuradas por día incluyen días de reemplazo.

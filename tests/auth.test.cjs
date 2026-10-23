@@ -27,6 +27,8 @@ test('flujo HTTP protege datos, rechaza CSRF y cierra sesión',async()=>{
   assert.equal((await request(prefix+'/api/drafts/test_2026-10/transfer',mutate)).status,403);
   const committeeResponse=await request('/login',post('username=committee-test&password=committee-pass'));assert.equal(committeeResponse.status,200);const committeeTab=(await committeeResponse.json()).tab,committeeCookie=committeeResponse.headers.get('set-cookie').split(';')[0];
   const forbidden=await request('/s/'+committeeTab+'/api/drafts',{...mutate,headers:{...mutate.headers,Cookie:committeeCookie+'; '+csrfCookie}});assert.equal(forbidden.status,403);
+  assert.equal((await request('/s/'+committeeTab+'/api/attendance?period=2026-10',{headers:{Cookie:committeeCookie}})).status,403);
+  assert.equal((await request('/s/'+committeeTab+'/api/attendance',{...mutate,headers:{...mutate.headers,Cookie:committeeCookie+'; '+csrfCookie}})).status,403);
   assert.equal((await request('/workers.js',{headers})).status,401);assert.equal((await request('/session-check',{headers})).status,401);assert.equal((await request('/session-check',{headers:{...headers,'X-CHR-Tab':tab}})).status,204);r=await request(prefix+'/workers.js',{headers});assert.equal(r.status,200);assert((await r.text()).includes('WORKERS'));assert.equal(r.headers.get('cdn-cache-control'),'no-store');
   assert.equal((await request(prefix+'/unknown',{headers})).status,404);
   r=await request('/',{headers});assert((await r.text()).includes('Iniciar sesión'));r=await request(prefix+'/index.html',{headers});assert((await r.text()).includes('Cerrar sesión'));

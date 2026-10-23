@@ -1,26 +1,33 @@
 (function(root){
- const fields=['worked','absent','advance'];
+ const basicFields=['worked','absent','advance'];
+ const fields=[...basicFields,'vacation','replacementDays','overtimeHours'];
  const taxBands=[{limit:13.5,rate:0,rebate:0},{limit:30,rate:0.04,rebate:0.54},{limit:50,rate:0.08,rebate:1.74},{limit:70,rate:0.135,rebate:4.49},{limit:90,rate:0.23,rebate:11.14},{limit:120,rate:0.304,rebate:17.8},{limit:310,rate:0.35,rebate:23.32},{limit:Infinity,rate:0.4,rebate:38.82}];
  const round=Math.round;
  function monthlyTax(base,utm){const band=taxBands.find(b=>base<=b.limit*utm);return Math.max(0,round(base*band.rate-band.rebate*utm));}
  function calculate(d,w,context){
   const rules=context?.rules||root.PayrollRules,insurance=context?.pensionData||root.PensionData;
   const r={errors:[],pending:[],warnings:[],incomeRows:[],deductionRows:[],adjustments:[],ready:false,transfer:null,net:null,gross:0,totalTaxable:0,nonTaxable:0,totalDeductions:0,absenceSalaryDiscount:0,attendanceBonusLoss:0,fixedBonusesDiscount:0,pensionTotal:0,afp:0,health:0,afc:0,apv:0,tax:0,taxBase:0,preAdvanceNet:0};
-  for(const key of fields){r[key]=Number(d[key]);if(d[key]===''||d[key]==null||!Number.isFinite(r[key])||r[key]<0)r.errors.push('Completa asistencia, ausencias y anticipos con valores mayores o iguales a cero.');}
+  for(const key of fields){const value=basicFields.includes(key)?d[key]:(d[key]??0);r[key]=Number(value);if(value===''||value==null||!Number.isFinite(r[key])||r[key]<0)r.errors.push('Completa asistencia, ausencias y anticipos con valores mayores o iguales a cero.');}
   const validPeriod=/^\d{4}-(0[1-9]|1[0-2])$/.test(d.period||'');if(!validPeriod)r.errors.push('Selecciona un período válido.');
   const days=validPeriod?new Date(Number(d.period.slice(0,4)),Number(d.period.slice(5,7)),0).getDate():31;
   if(!Number.isInteger(r.worked)||!Number.isInteger(r.absent))r.errors.push('Los días deben ser números enteros.');
-  if(r.worked+r.absent>days)r.errors.push('La asistencia y las ausencias superan los días del mes.');
+  if(!Number.isInteger(r.vacation)||!Number.isInteger(r.replacementDays))r.errors.push('Vacaciones y días de reemplazo deben ser enteros.');
+  if(r.worked+r.absent+r.vacation>days)r.errors.push('La asistencia y las ausencias superan los días del mes.');
   if(!Number.isSafeInteger(r.advance))r.errors.push('Los anticipos deben ser un monto entero en pesos.');
   if(r.errors.length)return r;
   if(!w||!rules){r.pending.push('Falta la configuración del trabajador o las reglas de cálculo.');return r;}
-  if(r.worked===0&&r.absent===0)r.pending.push('Registra los días de asistencia o de ausencia para calcular el período.');
+  const dailyRate=w.salaryBasis==='day'?w.dailyRate:w.base/30;
+  if((r.replacementDays||r.overtimeHours)&&(!Number.isFinite(dailyRate)||dailyRate<0))r.pending.push('Falta la tarifa diaria del trabajador.');
+  r.replacementPay=round(dailyRate*r.replacementDays)||0;r.overtimePay=round(dailyRate*r.overtimeHours/8)||0;
+  if(r.worked===0&&r.absent===0&&r.vacation===0)r.pending.push('Registra los días de asistencia o de ausencia para calcular el período.');
   r.kind=w.employmentType==='honorarios'?'honorarios':'employee';r.insurance=r.kind==='employee'?insurance?.[w.id]:null;r.rulesVersion=rules.version;
   if(r.kind==='honorarios'){
    const contract=rules.honorarios?.[w.id],rate=rules.honorariosRetentionByYear?.[Number(d.period.slice(0,4))];
    if(contract?.amountType!=='gross'||typeof contract?.receiverWithholds!=='boolean')r.pending.push('Confirma el monto bruto y quién retiene en los honorarios.');
    if(typeof rate!=='number')r.pending.push('Falta la tasa de honorarios del año seleccionado.');
-   r.gross=round(w.dailyRate*r.worked);r.incomeRows.push({label:'Honorarios brutos ('+r.worked+' días)',amount:r.gross,note:'Tarifa bruta por día: '+w.dailyRate});
+   r.gross=round(w.dailyRate*r.worked)+r.replacementPay+r.overtimePay;r.incomeRows.push({label:'Honorarios brutos ('+r.worked+' días)',amount:round(w.dailyRate*r.worked),note:'Tarifa bruta por día: '+w.dailyRate});
+   if(r.replacementDays)r.incomeRows.push({label:'Reemplazos ('+r.replacementDays+' días)',amount:r.replacementPay});
+   if(r.overtimeHours)r.incomeRows.push({label:'Cobertura compartida ('+r.overtimeHours+' horas)',amount:r.overtimePay,note:'4 horas equivalen a medio día, según la regla acordada'});
    r.withholding=contract?.receiverWithholds?round(r.gross*(rate||0)):0;r.selfPpm=contract?.receiverWithholds?0:round(r.gross*(rate||0));
    r.deductionRows=[{label:'Retención del receptor',amount:r.withholding},{label:'Anticipos',amount:r.advance}];r.totalDeductions=r.withholding+r.advance;r.preAdvanceNet=r.gross-r.withholding;
    r.warnings.push(contract?.receiverWithholds?'El receptor retiene el impuesto de honorarios.':'Boleta sin retención del receptor: el prestador declara y paga su PPM. El PPM informativo no se descuenta de esta transferencia.');
@@ -36,9 +43,11 @@
   else{r.absenceSalaryDiscount=Math.min(w.base,round(w.base*r.absent/30));r.baseAfterAbsences=w.base-r.absenceSalaryDiscount;}
   r.incomeRows.push({label:w.salaryBasis==='day'?'Sueldo base ('+r.worked+' días)':'Sueldo base del período',amount:r.baseAfterAbsences,taxable:true,note:r.absenceSalaryDiscount?'Base mensual menos descuento por ausencias':'Sueldo configurado'});
   if(r.absenceSalaryDiscount)r.adjustments.push({label:'Sueldo: base mensual ÷ 30 × '+r.absent+' día(s)',amount:r.absenceSalaryDiscount});
+  if(r.replacementDays)r.incomeRows.push({label:'Reemplazos ('+r.replacementDays+' días)',amount:r.replacementPay,taxable:true,note:'Valor del día del trabajador × días adicionales'});
+  if(r.overtimeHours)r.incomeRows.push({label:'Cobertura compartida ('+r.overtimeHours+' horas)',amount:r.overtimePay,taxable:true,note:'4 horas equivalen a medio día, según la regla acordada'});
   for(const a of w.allowances||[]){
    let amount=a.amount,note='';
-   if(a.basis==='day'){amount=round(a.amount*r.worked);note='Tarifa diaria × '+r.worked+' días trabajados';}
+   if(a.basis==='day'){amount=round(a.amount*(r.worked+r.replacementDays));note='Tarifa diaria × '+(r.worked+r.replacementDays)+' días y reemplazos';}
    else if(a.basis!=='month'){r.pending.push('Falta la regla de pago de '+a.label+'.');continue;}
    else if(a.label==='Bono asistencia'){
     if(r.absent>0){amount=0;r.attendanceBonusLoss+=a.amount;note='No se paga por registrar inasistencia';r.adjustments.push({label:'Bono de asistencia no devengado',amount:a.amount});}

@@ -5,7 +5,7 @@ const {getStore}=require('../server/draft-store.cjs');
 const serviceCache=new Map();
 const root=path.resolve(__dirname,'..','private-dist');
 const attempts=new Map();
-const assets=new Set(['index.html','styles.css','app.js','shared-ui.js','calculator.js','pdf.js','profiles.js','workers.js','pension-data.js','payroll-rules.js','vendor/jspdf.umd.min.js']);
+const assets=new Set(['index.html','styles.css','app.js','shared-ui.js','attendance-ui.js','calculator.js','pdf.js','profiles.js','workers.js','pension-data.js','payroll-rules.js','vendor/jspdf.umd.min.js']);
 const types={'.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8','.css':'text/css; charset=utf-8'};
 function send(res,status,body,type='text/html; charset=utf-8'){res.statusCode=status;res.setHeader('Content-Type',type);res.end(body);}
 function redirect(res,to){res.statusCode=303;res.setHeader('Location',to);res.end();}
@@ -16,11 +16,11 @@ async function readForm(req){
  if(req.body&&typeof req.body==='object'&&!Buffer.isBuffer(req.body)){const data=new URLSearchParams();for(const [k,v]of Object.entries(req.body)){if(typeof v!=='string'||v.length>1024)throw Error('size');data.set(k,v);}return data;}
  let chunks=[],size=0;for await(const chunk of req){size+=chunk.length;if(size>4096)throw Error('size');chunks.push(chunk);}return new URLSearchParams(Buffer.concat(chunks).toString());
 }
-async function readJson(req){
+async function readJson(req,limit=8192){
  if(!(req.headers['content-type']||'').startsWith('application/json'))throw Error('type');
- if(req.body&&typeof req.body==='object'&&!Buffer.isBuffer(req.body)){if(JSON.stringify(req.body).length>8192)throw Error('size');return req.body;}
- let body=req.body;if(typeof body!=='string'){const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>8192)throw Error('size');chunks.push(chunk);}body=Buffer.concat(chunks).toString();}
- if(body.length>8192)throw Error('size');const value=JSON.parse(body);if(!value||typeof value!=='object'||Array.isArray(value))throw Error('json');return value;
+ if(req.body&&typeof req.body==='object'&&!Buffer.isBuffer(req.body)){if(JSON.stringify(req.body).length>limit)throw Error('size');return req.body;}
+ let body=req.body;if(typeof body!=='string'){const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>limit)throw Error('size');chunks.push(chunk);}body=Buffer.concat(chunks).toString();}
+ if(body.length>limit)throw Error('size');const value=JSON.parse(body);if(!value||typeof value!=='object'||Array.isArray(value))throw Error('json');return value;
 }
 async function handler(req,res,assetRoot,dependencies={}){
  res.setHeader('Cache-Control','private, no-store, max-age=0');res.setHeader('CDN-Cache-Control','no-store');res.setHeader('Vercel-CDN-Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','SAMEORIGIN');res.setHeader('Referrer-Policy','no-referrer');
@@ -58,9 +58,25 @@ async function handler(req,res,assetRoot,dependencies={}){
    let input;
    if(req.method==='POST'){
     if(!sameOrigin(req)||!auth.validCsrf(req.headers['x-csrf-token'])||!auth.equal(req.headers['x-csrf-token'],auth.csrfCookie(req)))return json(403,{error:'Solicitud no permitida.'});
-    try{input=await readJson(req);}catch{return json(400,{error:'Datos de solicitud inválidos.'});}
+    if(resource==='api/attendance'&&identity.role!=='admin')return json(403,{error:'Solo administración puede leer e importar la planilla.'});
+    try{input=await readJson(req,resource==='api/attendance'?3*1024*1024:8192);}catch{return json(400,{error:'Datos de solicitud inválidos o archivo demasiado grande.'});}
     if(resource==='api/drafts'&&identity.role!=='admin')return json(403,{error:'El comité no puede editar los borradores.'});
     if(resource.endsWith('/transfer')&&identity.role!=='committee')return json(403,{error:'Solo el comité puede registrar transferencias.'});
+   }
+   if(resource==='api/attendance'&&['GET','POST'].includes(req.method)){
+    if(identity.role!=='admin')return json(403,{error:'Solo administración puede leer e importar la planilla.'});
+    const attendance=require('../server/attendance.cjs');
+    try{
+     const period=input?.period||url.searchParams.get('period')||req.query?.period;
+     if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(period||''))return json(400,{error:'Selecciona un período válido.'});
+     let sheets;
+     if(req.method==='POST'){
+      if(typeof input.file!=='string'||!input.file||!/^[A-Za-z0-9+/=]+$/.test(input.file))return json(400,{error:'Selecciona el archivo Excel (.xlsx) descargado desde Google Sheets.'});
+      sheets=await attendance.fromXlsx(Buffer.from(input.file,'base64'));
+     }else sheets=await attendance.fromGoogle();
+     const payroll=loadPayroll(assetRoot);
+     return json(200,attendance.analyze(sheets,period,payroll.WORKERS));
+    }catch(e){return json(e.status||422,{error:e.message||'No se pudo leer la planilla.'});}
    }
    let service=dependencies.service||serviceCache.get(assetRoot);if(!service){service=new DraftService(getStore(),loadPayroll(assetRoot));serviceCache.set(assetRoot,service);}
    if(resource==='api/drafts'&&req.method==='GET')return json(200,{drafts:await service.list(url.searchParams.get('period')||req.query?.period||null)});
