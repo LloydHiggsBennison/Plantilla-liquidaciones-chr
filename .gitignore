@@ -1,0 +1,10 @@
+node_modules/
+dist/vendor/
+dist/workers.js
+dist/pension-data.js
+.openai/
+.env
+.env.*
+work/
+outputs/
+*.pdf
