@@ -22,7 +22,7 @@ El segundo comando prepara `dist/` para un servidor estático. No se necesita un
 
 ## Login y privacidad
 
-La versión para Vercel requiere autenticación en el servidor. La sesión dura 8 horas, usa una cookie HttpOnly, SameSite=Strict y Secure en Vercel. El cierre de sesión elimina la cookie. Los formularios incluyen protección CSRF y el servidor verifica todas las solicitudes de archivos.
+La versión para Vercel requiere autenticación en el servidor. La sesión no tiene vencimiento por tiempo. Usa una cookie de sesión HttpOnly, SameSite=Strict y Secure en Vercel, combinada con una prueba de acceso guardada en sessionStorage por pestaña. Recargar mantiene el acceso. Una pestaña nueva sin esa prueba muestra el login, aunque otra pestaña tenga sesión. El cierre normal de la pestaña elimina sessionStorage; Cerrar sesión elimina además la cookie. Los borradores permanecen en localStorage. Algunos navegadores restauran sessionStorage al usar Recuperar pestaña cerrada o Restaurar sesión: para cerrar el acceso de forma explícita y fiable, utiliza Cerrar sesión. No se utiliza un temporizador ni se guarda la contraseña en el navegador. Los formularios incluyen protección CSRF y el servidor verifica todas las solicitudes de archivos.
 
 `config/payroll.enc.json` contiene la configuración de los 18 trabajadores cifrada con AES-256-GCM. La clave de descifrado y las credenciales no forman parte del repositorio. El build escribe los datos en `private-dist/`, fuera de la carpeta pública. Una función autenticada entrega los recursos. Los datos y la contraseña nunca deben copiarse a `public/` ni a variables públicas.
 

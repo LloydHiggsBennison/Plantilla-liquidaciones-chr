@@ -14,16 +14,20 @@ async function readForm(req){
  let chunks=[],size=0;for await(const chunk of req){size+=chunk.length;if(size>4096)throw Error('size');chunks.push(chunk);}return new URLSearchParams(Buffer.concat(chunks).toString());
 }
 async function handler(req,res,assetRoot){
- res.setHeader('Cache-Control','private, no-store, max-age=0');res.setHeader('CDN-Cache-Control','no-store');res.setHeader('Vercel-CDN-Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','no-referrer');
- res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+ res.setHeader('Cache-Control','private, no-store, max-age=0');res.setHeader('CDN-Cache-Control','no-store');res.setHeader('Vercel-CDN-Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','SAMEORIGIN');res.setHeader('Referrer-Policy','no-referrer');
+ res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'self'");
  if(!auth.configured())return send(res,503,'Acceso no configurado. Configura las variables privadas de autenticación en Vercel.');
  const url=new URL(req.url,'http://localhost');let resource;
  try{resource=decodeURIComponent(String(req.query?.asset??url.searchParams.get('asset')??url.pathname.replace(/^\//,'')));}catch{return send(res,400,'Ruta inválida.');}
  if(!['GET','HEAD','POST'].includes(req.method)){res.setHeader('Allow','GET, HEAD, POST');return send(res,405,'Método no permitido.');}
  function csrf(){let token=auth.csrfCookie(req);if(!auth.validCsrf(token)){token=auth.csrfToken();res.setHeader('Set-Cookie',auth.csrfHeader(req,token));}return token;}
  function csrfForm(form){const token=form.get('csrf');return auth.validCsrf(token)&&auth.equal(token,auth.csrfCookie(req));}
+ function renderLogin(error=''){return login(error,csrf()).replace('</body>','<script src="/session-client.js" defer></script></body>');}
+ if(resource==='session-client.js'&&req.method==='GET')return send(res,200,await fs.readFile(path.join(__dirname,'../server/session-client.js')),types['.js']);
+ if(['','index.html','login','signed-out'].includes(resource)&&['GET','HEAD'].includes(req.method))return send(res,200,req.method==='HEAD'?'':renderLogin());
+ const browser=auth.session(req),match=resource.match(/^s\/([-\w.]+)\/(.*)$/),tab=match?.[1]||req.headers['x-chr-tab'];
+ if(resource==='session-check'&&req.method==='GET')return send(res,auth.validTab(tab,browser)?204:401,'','text/plain');
  if(resource==='login'){
-  if(req.method==='GET'||req.method==='HEAD'){if(auth.valid(auth.session(req)))return redirect(res,'/');return send(res,200,req.method==='HEAD'?'':login('',csrf()));}
   if(!sameOrigin(req))return send(res,403,'Solicitud no permitida.');
   // Límite por instancia; el límite global debe configurarse en Vercel Firewall.
   const ip=String(req.headers['x-vercel-forwarded-for']||req.socket?.remoteAddress||'unknown').split(',')[0],now=Date.now();
@@ -33,19 +37,20 @@ async function handler(req,res,assetRoot){
   let form;try{form=await readForm(req);}catch{return send(res,400,login('Revisa los datos ingresados.',csrf()));}
   if(!csrfForm(form))return send(res,403,'Solicitud no permitida.');
   if(!await auth.verifyCredentials(form.get('username'),form.get('password')))return send(res,401,login('Usuario o contraseña incorrectos.',csrf()));
-  attempts.delete(ip);res.setHeader('Set-Cookie',auth.cookie(req,auth.issue()));return redirect(res,'/');
+  attempts.delete(ip);const browserToken=auth.valid(browser)?browser:auth.issue();res.setHeader('Set-Cookie',auth.cookie(req,browserToken));return send(res,200,JSON.stringify({tab:auth.issueTab(browserToken)}),'application/json');
  }
- if(!auth.valid(auth.session(req))){if(resource===''||resource==='index.html')return redirect(res,'/login');return send(res,401,'Debes iniciar sesión.','text/plain; charset=utf-8');}
+ if(!match||!auth.validTab(tab,browser))return send(res,401,'Debes iniciar sesión.','text/plain; charset=utf-8');
+ resource=match[2];
  if(resource==='logout'){
   if(req.method!=='POST'||!sameOrigin(req))return send(res,403,'Solicitud no permitida.');
   let form;try{form=await readForm(req);}catch{return send(res,400,'Solicitud inválida.');}if(!csrfForm(form))return send(res,403,'Solicitud no permitida.');
-  res.setHeader('Set-Cookie',auth.cookie(req,'',true));return redirect(res,'/login');
+  res.setHeader('Set-Cookie',auth.cookie(req,'',true));return redirect(res,'/signed-out');
  }
  if(!['GET','HEAD'].includes(req.method))return send(res,405,'Método no permitido.');
  resource=resource||'index.html';if(!assets.has(resource))return send(res,404,'No encontrado.');
  try{
   let data=await fs.readFile(path.join(assetRoot,resource));
-  if(resource==='index.html')data=Buffer.from(data.toString().replace('</header>','<form method="post" action="/logout"><input type="hidden" name="csrf" value="'+csrf()+'"><button class="button outline" type="submit">Cerrar sesión</button></form></header>'));
+  if(resource==='index.html')data=Buffer.from(data.toString().replace('</header>','<form method="post" target="_top" action="/s/'+tab+'/logout"><input type="hidden" name="csrf" value="'+csrf()+'"><button class="button outline" type="submit">Cerrar sesión</button></form></header>'));
   return send(res,200,req.method==='HEAD'?'':data,types[path.extname(resource)]||'application/octet-stream');
  }catch{return send(res,503,'No se pudo cargar la aplicación.');}
 }

@@ -6,7 +6,7 @@
   "outputDirectory": "public",
   "functions": {
     "api/gateway.js": {
-      "includeFiles": "private-dist/**"
+      "includeFiles": "{private-dist/**,server/session-client.js}"
     }
   },
   "rewrites": [
