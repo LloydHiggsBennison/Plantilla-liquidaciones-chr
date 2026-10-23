@@ -20,13 +20,13 @@ npm run prepare:static
 
 El segundo comando prepara `dist/` para un servidor estático. No se necesita un backend para los cálculos. Para cambiar el puerto se utiliza la variable de entorno `PORT`.
 
-## Configuración y privacidad
+## Login y privacidad
 
-La versión pública de GitHub contiene código y datos ficticios. No contiene la nómina real, los sueldos personales, los datos previsionales, el PDF original ni el enlace a la planilla privada. La versión privada conserva la configuración real.
+La versión para Vercel requiere autenticación en el servidor. La sesión dura 8 horas, usa una cookie HttpOnly, SameSite=Strict y Secure en Vercel. El cierre de sesión elimina la cookie. Los formularios incluyen protección CSRF y el servidor verifica todas las solicitudes de archivos.
 
-Los archivos locales `dist/workers.js` y `dist/pension-data.js` están excluidos del repositorio público. Sus estructuras están documentadas mediante `dist/workers.example.js` y `dist/pension-data.example.js`. Las reglas generales y los parámetros mensuales están en `dist/payroll-rules.js`.
+`config/payroll.enc.json` contiene la configuración de los 18 trabajadores cifrada con AES-256-GCM. La clave de descifrado y las credenciales no forman parte del repositorio. El build escribe los datos en `private-dist/`, fuera de la carpeta pública. Una función autenticada entrega los recursos. Los datos y la contraseña nunca deben copiarse a `public/` ni a variables públicas.
 
-Los datos y borradores se guardan solo en el navegador. No se sincronizan entre equipos. Se puede exportar una copia JSON. La aplicación no ejecuta transferencias ni emite boletas ante el SII.
+Los borradores se guardan en el navegador y no se sincronizan entre equipos. La aplicación no ejecuta transferencias ni emite boletas ante el SII.
 
 ## Cálculo
 
@@ -44,14 +44,17 @@ Ver [reglas, redondeos y fuentes oficiales](docs/calculo.md). Las pruebas incluy
 
 ## Desplegar en Vercel
 
-Importa este repositorio desde GitHub en Vercel y utiliza la rama `main`.
+Importa el repositorio usando Framework **Other** y la raíz `./`. El archivo `vercel.json` define `npm ci`, `npm run build:vercel` y salida `public`. El directorio público no contiene la nómina; `api/gateway.js` sirve los archivos privados después de validar la sesión.
 
-- Framework Preset: **Other**.
-- Root Directory: raíz del repositorio (`./`).
-- Install Command: `npm ci`.
-- Build Command: `npm run prepare:static`.
-- Output Directory: `dist`.
+Antes de desplegar, configura estas cuatro variables en Settings → Environment Variables, para Production:
 
-El archivo `vercel.json` define estos valores. No se requieren variables de entorno para la versión de ejemplo. La instalación genera los archivos de perfiles ficticios y copia jsPDF; el build actualiza las versiones de los recursos. Presiona **Deploy** para publicar.
+- `AUTH_USERNAME`: nombre del administrador.
+- `AUTH_PASSWORD_HASH`: hash scrypt del password, con formato `scrypt$saltHex$hashHex`.
+- `AUTH_SESSION_SECRET`: secreto aleatorio de al menos 32 bytes.
+- `PAYROLL_DATA_KEY`: clave AES de 32 bytes, en Base64, correspondiente al archivo cifrado.
 
-El despliegue desde este repositorio público utiliza datos ficticios. La configuración real de trabajadores y previsión está excluida; no se transfiere desde el sitio privado al conectar GitHub con Vercel.
+El propietario dispone de un archivo privado `.env` con los valores configurados. No debe subirse a GitHub. No se usa la contraseña en texto plano como clave de cifrado. Si faltan variables, la aplicación permanece cerrada. Tras configurarlas, ejecuta un nuevo Deploy/Redeploy. Cada entorno necesita sus variables explícitas; no habilitar previews con datos reales sin control de acceso.
+
+Para probar localmente la versión protegida, carga las variables privadas en el proceso y ejecuta `npm run build:vercel` y `npm run start:private` (puerto 5175). El comando `npm start` corresponde al servidor estático de demostración, sin autenticación, y no se utiliza en Vercel.
+
+El límite de intentos del código es por instancia. Para un límite global, configura una regla en Vercel Firewall para POST `/login` y `/api/gateway`. El servidor no registra contraseñas, cookies ni datos de remuneraciones.

@@ -8,3 +8,5 @@ dist/pension-data.js
 work/
 outputs/
 *.pdf
+private-dist/
+.vercel/
