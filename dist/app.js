@@ -21,7 +21,6 @@ function update(){
  $('pay-earnings').innerHTML=rows(r.incomeRows);$('pay-deductions').innerHTML=rows(r.deductionRows);$('pay-adjustments').innerHTML=rows(r.adjustments);$('adjustments-section').hidden=!r.adjustments.length;
  $('pay-imponible').textContent=isHonorarios?'No aplica':money(r.totalTaxable);$('pay-non-imponible').textContent=isHonorarios?'No aplica':money(r.nonTaxable);$('pay-gross').textContent=money(r.gross);$('pay-total-deductions').textContent=money(r.totalDeductions);$('pay-net').textContent=r.ready?money(r.transfer):'Pendiente';
  const issues=[...r.errors,...r.pending];$('calculation-status').hidden=!issues.length;$('calculation-status').textContent=issues.join(' ');
- $('calculation-basis').textContent=isHonorarios?r.warnings.join(' ')+(r.selfPpm?' PPM informativo del prestador: '+money(r.selfPpm)+'.':''):'Cotizaciones recalculadas sobre '+money(r.totalTaxable)+'. El descuento por ausencias ya está incorporado en los haberes. Colación y movilización se ajustan por las ausencias del período.';
  $('download-pdf').textContent=r.ready?(isHonorarios?'↓ Descargar resumen de honorarios':'↓ Descargar liquidación PDF'):'↓ Descargar borrador PDF';
  $('period-count').textContent=Object.values(drafts).filter(x=>x.period===d.period).length;
 }
