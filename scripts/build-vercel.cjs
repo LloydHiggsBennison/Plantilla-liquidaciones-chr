@@ -2,7 +2,7 @@ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypt
 const root=path.resolve(__dirname,'..');
 require('./prepare-static.cjs');
 const dest=path.join(root,'private-dist');fs.mkdirSync(dest,{recursive:true});
-const names=['index.html','styles.css','app.js','calculator.js','pdf.js','profiles.js','workers.js','pension-data.js','payroll-rules.js'];
+const names=['index.html','styles.css','app.js','shared-ui.js','calculator.js','pdf.js','profiles.js','workers.js','pension-data.js','payroll-rules.js'];
 for(const name of names)fs.copyFileSync(path.join(root,'dist',name),path.join(dest,name));
 fs.mkdirSync(path.join(dest,'vendor'),{recursive:true});fs.copyFileSync(path.join(root,'dist/vendor/jspdf.umd.min.js'),path.join(dest,'vendor/jspdf.umd.min.js'));
 const encrypted=path.join(root,'config/payroll.enc.json');

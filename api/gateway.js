@@ -1,8 +1,11 @@
 const fs=require('node:fs/promises'),path=require('node:path');
 const auth=require('../server/auth.cjs'),login=require('../server/login.cjs');
+const {DraftService,loadPayroll}=require('../server/drafts.cjs');
+const {getStore}=require('../server/draft-store.cjs');
+const serviceCache=new Map();
 const root=path.resolve(__dirname,'..','private-dist');
 const attempts=new Map();
-const assets=new Set(['index.html','styles.css','app.js','calculator.js','pdf.js','profiles.js','workers.js','pension-data.js','payroll-rules.js','vendor/jspdf.umd.min.js']);
+const assets=new Set(['index.html','styles.css','app.js','shared-ui.js','calculator.js','pdf.js','profiles.js','workers.js','pension-data.js','payroll-rules.js','vendor/jspdf.umd.min.js']);
 const types={'.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8','.css':'text/css; charset=utf-8'};
 function send(res,status,body,type='text/html; charset=utf-8'){res.statusCode=status;res.setHeader('Content-Type',type);res.end(body);}
 function redirect(res,to){res.statusCode=303;res.setHeader('Location',to);res.end();}
@@ -13,7 +16,13 @@ async function readForm(req){
  if(req.body&&typeof req.body==='object'&&!Buffer.isBuffer(req.body)){const data=new URLSearchParams();for(const [k,v]of Object.entries(req.body)){if(typeof v!=='string'||v.length>1024)throw Error('size');data.set(k,v);}return data;}
  let chunks=[],size=0;for await(const chunk of req){size+=chunk.length;if(size>4096)throw Error('size');chunks.push(chunk);}return new URLSearchParams(Buffer.concat(chunks).toString());
 }
-async function handler(req,res,assetRoot){
+async function readJson(req){
+ if(!(req.headers['content-type']||'').startsWith('application/json'))throw Error('type');
+ if(req.body&&typeof req.body==='object'&&!Buffer.isBuffer(req.body)){if(JSON.stringify(req.body).length>8192)throw Error('size');return req.body;}
+ let body=req.body;if(typeof body!=='string'){const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>8192)throw Error('size');chunks.push(chunk);}body=Buffer.concat(chunks).toString();}
+ if(body.length>8192)throw Error('size');const value=JSON.parse(body);if(!value||typeof value!=='object'||Array.isArray(value))throw Error('json');return value;
+}
+async function handler(req,res,assetRoot,dependencies={}){
  res.setHeader('Cache-Control','private, no-store, max-age=0');res.setHeader('CDN-Cache-Control','no-store');res.setHeader('Vercel-CDN-Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','SAMEORIGIN');res.setHeader('Referrer-Policy','no-referrer');
  res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'self'");
  if(!auth.configured())return send(res,503,'Acceso no configurado. Configura las variables privadas de autenticación en Vercel.');
@@ -36,11 +45,30 @@ async function handler(req,res,assetRoot){
   current.count++;attempts.set(ip,current);
   let form;try{form=await readForm(req);}catch{return send(res,400,login('Revisa los datos ingresados.',csrf()));}
   if(!csrfForm(form))return send(res,403,'Solicitud no permitida.');
-  if(!await auth.verifyCredentials(form.get('username'),form.get('password')))return send(res,401,login('Usuario o contraseña incorrectos.',csrf()));
-  attempts.delete(ip);const browserToken=auth.valid(browser)?browser:auth.issue();res.setHeader('Set-Cookie',auth.cookie(req,browserToken));return send(res,200,JSON.stringify({tab:auth.issueTab(browserToken)}),'application/json');
+  const identity=await auth.authenticate(form.get('username'),form.get('password'));if(!identity)return send(res,401,login('Usuario o contraseña incorrectos.',csrf()));
+  attempts.delete(ip);const browserToken=auth.valid(browser)?browser:auth.issue();res.setHeader('Set-Cookie',auth.cookie(req,browserToken));return send(res,200,JSON.stringify({tab:auth.issueTab(browserToken,process.env,identity)}),'application/json');
  }
  if(!match||!auth.validTab(tab,browser))return send(res,401,'Debes iniciar sesión.','text/plain; charset=utf-8');
  resource=match[2];
+ const identity=auth.tabIdentity(tab,browser);
+ if(resource==='session-profile.js'&&req.method==='GET')return send(res,200,'window.SessionProfile='+JSON.stringify({...identity,csrf:csrf()})+';',types['.js']);
+ if(resource.startsWith('api/')){
+  const json=(status,value)=>send(res,status,JSON.stringify(value),'application/json; charset=utf-8');
+  try{
+   let input;
+   if(req.method==='POST'){
+    if(!sameOrigin(req)||!auth.validCsrf(req.headers['x-csrf-token'])||!auth.equal(req.headers['x-csrf-token'],auth.csrfCookie(req)))return json(403,{error:'Solicitud no permitida.'});
+    try{input=await readJson(req);}catch{return json(400,{error:'Datos de solicitud inválidos.'});}
+    if(resource==='api/drafts'&&identity.role!=='admin')return json(403,{error:'El comité no puede editar los borradores.'});
+    if(resource.endsWith('/transfer')&&identity.role!=='committee')return json(403,{error:'Solo el comité puede registrar transferencias.'});
+   }
+   let service=dependencies.service||serviceCache.get(assetRoot);if(!service){service=new DraftService(getStore(),loadPayroll(assetRoot));serviceCache.set(assetRoot,service);}
+   if(resource==='api/drafts'&&req.method==='GET')return json(200,{drafts:await service.list(url.searchParams.get('period')||req.query?.period||null)});
+   if(resource==='api/drafts'&&req.method==='POST')return json(200,{draft:await service.save(input,identity)});
+   const transfer=resource.match(/^api\/drafts\/([^/]+)\/transfer$/);if(transfer&&req.method==='POST')return json(200,{draft:await service.markTransferred(transfer[1],input,identity)});
+   return json(404,{error:'No encontrado.'});
+  }catch(e){return json(e.status||503,{error:e.status?e.message:'No se pudo acceder al guardado compartido. Intenta nuevamente.'});}
+ }
  if(resource==='logout'){
   if(req.method!=='POST'||!sameOrigin(req))return send(res,403,'Solicitud no permitida.');
   let form;try{form=await readForm(req);}catch{return send(res,400,'Solicitud inválida.');}if(!csrfForm(form))return send(res,403,'Solicitud no permitida.');
@@ -50,9 +78,9 @@ async function handler(req,res,assetRoot){
  resource=resource||'index.html';if(!assets.has(resource))return send(res,404,'No encontrado.');
  try{
   let data=await fs.readFile(path.join(assetRoot,resource));
-  if(resource==='index.html')data=Buffer.from(data.toString().replace('</header>','<form method="post" target="_top" action="/s/'+tab+'/logout"><input type="hidden" name="csrf" value="'+csrf()+'"><button class="button outline" type="submit">Cerrar sesión</button></form></header>'));
+  if(resource==='index.html')data=Buffer.from(data.toString().replace(/(<script defer src="app\.js[^>]*><\/script>)/,'<script defer src="session-profile.js"></script>$1').replace('</header>','<form method="post" target="_top" action="/s/'+tab+'/logout"><input type="hidden" name="csrf" value="'+csrf()+'"><button class="button outline" type="submit">Cerrar sesión</button></form></header>'));
   return send(res,200,req.method==='HEAD'?'':data,types[path.extname(resource)]||'application/octet-stream');
  }catch{return send(res,503,'No se pudo cargar la aplicación.');}
 }
 module.exports=(req,res)=>handler(req,res,root);
-module.exports.createHandler=assetRoot=>(req,res)=>handler(req,res,path.resolve(assetRoot));
+module.exports.createHandler=(assetRoot,dependencies)=>(req,res)=>handler(req,res,path.resolve(assetRoot),dependencies);

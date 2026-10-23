@@ -1,14 +1,14 @@
 {
   "name": "liquidaciones",
   "version": "1.0.0",
-  "description": "Liquidaciones de sueldo con asistencia, ausencias, cotizaciones y exportaciÃ³n PDF",
+  "description": "Liquidaciones de sueldo con asistencia, ausencias, cotizaciones y exportaciÃƒÂ³n PDF",
   "private": true,
   "scripts": {
     "test": "node --test tests/*.test.cjs",
     "setup:demo": "node scripts/setup-demo.cjs",
     "postinstall": "node scripts/prepare-static.cjs",
     "prepare:static": "node scripts/prepare-static.cjs",
-    "start": "node scripts/serve.cjs",
+    "start": "node scripts/serve-private.cjs",
     "build:vercel": "node scripts/build-vercel.cjs",
     "start:private": "node scripts/serve-private.cjs"
   },
@@ -16,6 +16,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@neondatabase/serverless": "^1.2.0",
     "jspdf": "^4.2.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11"
   }
 }

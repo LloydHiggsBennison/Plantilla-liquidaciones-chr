@@ -4,15 +4,17 @@ const percent=n=>new Intl.NumberFormat('es-CL',{style:'percent',maximumFractionD
 const escapeHtml=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const initials=name=>name.split(' ').slice(0,2).map(s=>s[0]).join('');
 const periodLabel=p=>/^\d{4}-(0[1-9]|1[0-2])$/.test(p)?new Date(Number(p.slice(0,4)),Number(p.slice(5,7))-1,1).toLocaleDateString('es-CL',{month:'long',year:'numeric'}):'Selecciona un período';
-const STORAGE='nomina-simple-drafts-v1';let drafts={};
-try{const stored=JSON.parse(localStorage.getItem(STORAGE)||'{}');if(stored&&typeof stored==='object'&&!Array.isArray(stored))drafts=stored;}catch{}
+const STORAGE='nomina-simple-drafts-v1';let drafts={},legacyDrafts={},viewRecord=null,loadedRevision=0,storageReady=false;
+const profile=window.SessionProfile||{role:'committee',username:'',csrf:''},committee=profile.role==='committee';
+try{const stored=JSON.parse(localStorage.getItem(STORAGE)||'{}');if(stored&&typeof stored==='object'&&!Array.isArray(stored))legacyDrafts=stored;}catch{}
 const current=()=>WORKERS.find(w=>w.id===$('worker').value)||WORKERS[0];
 function read(){const d={worker:current().id,period:$('period').value};for(const k of Payroll.fields)d[k]=$(k).value;return d;}
 function showErrors(errors){$('errors').hidden=!errors.length;$('errors').textContent=errors.join(' ');if(errors.length)$('errors').scrollIntoView({behavior:'smooth',block:'center'});}
 function toast(s){$('toast').textContent=s;$('toast').hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').hidden=true,4000);}
 function rows(items){return items.map(a=>'<div class="row"><span>'+escapeHtml(a.label)+(a.note?'<small class="basis-note">'+escapeHtml(a.note)+'</small>':'')+'</span><strong>'+money(a.amount)+'</strong></div>').join('');}
 function update(){
- const d=read(),w=current(),r=Payroll.calculate(d,w),p=PensionData[w.id],isHonorarios=w.employmentType==='honorarios';
+ const snapshot=viewRecord&&(committee||viewRecord.status==='transferred')?viewRecord.snapshot:null;
+ const d=snapshot?.data||read(),w=snapshot?.worker||current(),r=snapshot?.result||Payroll.calculate(d,w),p=r.insurance||PensionData[w.id],isHonorarios=w.employmentType==='honorarios';
  $('worker-name').textContent=$('preview-name').textContent=w.name;$('worker-role').textContent=$('preview-role').textContent=w.role;$('worker-initials').textContent=initials(w.name);$('preview-period').textContent=periodLabel(d.period);
  for(const k of ['worked','absent'])$('preview-'+k).textContent=d[k]||'0';
  $('salary-summary').textContent=isHonorarios?'Honorarios brutos por día: '+money(w.dailyRate):w.salaryBasis==='day'?'Sueldo base por día: '+money(w.dailyRate):'Sueldo base mensual: '+money(w.base);
@@ -24,16 +26,3 @@ function update(){
  $('download-pdf').textContent=r.ready?(isHonorarios?'↓ Descargar resumen de honorarios':'↓ Descargar liquidación PDF'):'↓ Descargar borrador PDF';
  $('period-count').textContent=Object.values(drafts).filter(x=>x.period===d.period).length;
 }
-function loadRecord(){const d=drafts[current().id+'_'+$('period').value];for(const k of Payroll.fields)$(k).value=d?.[k]??'0';$('errors').hidden=true;update();}
-function navigate(view){for(const k of ['payroll','team','history'])$(k+'-view').hidden=k!==view;document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.view===view));$('breadcrumb').textContent={payroll:'Liquidaciones',team:'Equipo',history:'Borradores guardados'}[view];if(view==='history')renderHistory();}
-function renderHistory(){const list=Object.values(drafts).filter(d=>WORKERS.some(w=>w.id===d.worker)).sort((a,b)=>b.period.localeCompare(a.period));$('history-list').innerHTML=list.length?list.map(d=>{const w=WORKERS.find(w=>w.id===d.worker),r=Payroll.calculate(d,w);return '<article class="history-card"><span class="worker-avatar">'+initials(w.name)+'</span><div><strong>'+escapeHtml(w.name)+'</strong><small>'+escapeHtml(periodLabel(d.period))+' · '+escapeHtml(w.role)+' · '+escapeHtml(d.worked||0)+' días de asistencia</small></div><strong>'+(r.ready?'Transferir '+money(r.transfer):'Datos pendientes')+'</strong><button class="button outline" data-load="'+escapeHtml(w.id+'_'+d.period)+'">Abrir registro</button></article>';}).join(''):'<div class="card" style="margin-top:20px"><h2>Aún no hay registros</h2><p>Completa la asistencia y presiona Guardar registro.</p></div>';}
-$('worker').innerHTML=WORKERS.map(w=>'<option value="'+w.id+'">'+escapeHtml(w.name)+' · '+escapeHtml(w.role)+'</option>').join('');$('total-staff').textContent=$('team-count').textContent=WORKERS.length;$('team-grid').innerHTML=WORKERS.map(w=>'<article class="worker-card"><span class="worker-avatar">'+initials(w.name)+'</span><div><strong>'+escapeHtml(w.name)+'</strong><small>'+escapeHtml(w.role)+(w.employmentType==='honorarios'?' · Honorarios':'')+'</small></div></article>').join('');
-const now=new Date();$('period').value=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-$('payroll-form').addEventListener('input',update);$('worker').addEventListener('change',loadRecord);$('period').addEventListener('change',loadRecord);
-$('payroll-form').addEventListener('submit',e=>{e.preventDefault();const d=read(),r=Payroll.calculate(d,current());if(r.errors.length){showErrors(r.errors);return;}const key=d.worker+'_'+d.period,next={...drafts,[key]:{...drafts[key],...d,calculation:{ready:r.ready,transfer:r.transfer,rulesVersion:r.rulesVersion},savedAt:new Date().toISOString()}};try{localStorage.setItem(STORAGE,JSON.stringify(next));drafts=next;$('errors').hidden=true;update();toast(r.ready?'Liquidación guardada en este navegador.':'Borrador guardado con datos pendientes.');}catch{showErrors(['No se pudo guardar. Descarga un respaldo y revisa el almacenamiento del navegador.']);}});
-document.querySelectorAll('.nav').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view)));
-$('history-list').addEventListener('click',e=>{const b=e.target.closest('[data-load]');if(!b)return;const d=drafts[b.dataset.load];if(!d)return;$('worker').value=d.worker;$('period').value=d.period;loadRecord();navigate('payroll');window.scrollTo({top:0,behavior:'smooth'});});
-function downloadBlob(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),5000);}
-$('backup').addEventListener('click',()=>{downloadBlob(new Blob([JSON.stringify({format:'nomina-simple-v1',drafts},null,2)],{type:'application/json'}),'nomina-respaldo-'+new Date().toISOString().slice(0,10)+'.json');toast('Respaldo descargado.');});
-$('download-pdf').addEventListener('click',()=>{const d=read(),w=current(),r=Payroll.calculate(d,w);if(r.errors.length){showErrors(r.errors);return;}if(!window.jspdf){showErrors(['No se pudo cargar el generador PDF. Recarga la página.']);return;}const pdf=buildSummaryPdf(jspdf.jsPDF,w,d,r),prefix=!r.ready?'Borrador':r.kind==='honorarios'?'Honorarios':'Liquidacion';pdf.save(prefix+'-'+w.id+'-'+d.period+'.pdf');$('errors').hidden=true;toast('PDF descargado.');});
-loadRecord();
