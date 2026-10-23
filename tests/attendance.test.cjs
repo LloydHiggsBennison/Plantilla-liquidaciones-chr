@@ -45,12 +45,24 @@ test('observación repetida en Turnos y Nocheros no duplica el reemplazo',()=>{
 test('ASEO requiere dos nombres: Sergio ausente no genera reemplazo; Gloria por Juan sí',()=>{
  const r=run([],[{name:'ASEO',rows:[{index:2,cells:{5:c('J.VERGARA'),6:c('S.CUELLO'),8:c('G.PONCE')}},{index:3,cells:{1:c('2026-10-22'),6:c('Completo','FF0000'),10:c('S.CUELLO DOCTOR MAMA')}},{index:4,cells:{1:c('2026-10-05'),5:c('VAC','F9CB9C'),8:c('DEF'),10:c('Juan vacaciones / Gloria')}}]}]);assert.equal(person(r,'Sergio Cuello').absent,1);assert.equal(person(r,'Sergio Cuello').replacementDays,0);assert.equal(person(r,'Gloria Ponce').replacementDays,1);assert.equal(person(r,'Juan Vergara').vacation,1);
 });
-test('un encabezado ambiguo en ASEO no se asigna al nochero Luis',()=>{
- const r=run([],[{name:'ASEO',rows:[{index:2,cells:{7:c('L.ALCAÍNO')}},{index:3,cells:{1:c('2026-10-25'),7:c('ABCDEFGHI')}}]}]);assert.equal(person(r,'Luis Alcaino').worked,0);assert(r.issues.some(x=>x.message.includes('L.ALCAÍNO')));
+test('Luis suma domingos ASEO con recargo y el lunes como adicional normal sin alterar Nocheros',()=>{
+ const r=run([],[{name:'Nocheros',rows:[{index:3,cells:{2:c('2026-10-11'),4:c('L.ALCAÍNO')}}]},{name:'ASEO',rows:[{index:2,cells:{7:c('L.ALCAÍNO')}},{index:3,cells:{1:c('2026-10-11'),7:c('ABCDEFGHI','FFFF00')}},{index:4,cells:{1:c('2026-10-12'),7:c('DEF','FFFF00')}},{index:5,cells:{1:c('2026-10-25'),7:c('ABCDEFGHI')}}]}]);const l=person(r,'Luis Alcaino');assert.equal(l.worked,1);assert.equal(l.aseoExtraDays,2);assert.equal(l.replacementDays,1);assert.equal(l.overtimeHours,0);assert.equal(l.issues.length,0);assert(!r.issues.some(x=>x.message.includes('L.ALCAÍNO')));
+});
+
+test('el recargo dominical corresponde a cualquier persona asignada en ASEO, no a otros turnos',()=>{
+ const r=run([turn(11,{5:c('J.CORTES')})],[{name:'ASEO',rows:[{index:2,cells:{5:c('J.VERGARA'),6:c('S.CUELLO'),7:c('L.ALCAÍNO')}},{index:3,cells:{1:c('2026-10-11'),5:c('ABCDEFGHI','FFFF00'),6:c('ABC','FF0000'),7:c('VAC','F9CB9C')}},{index:4,cells:{1:c('2026-10-18'),5:c('VAC','F9CB9C')}}]}]);assert.equal(person(r,'Juan Vergara').aseoExtraDays,1);assert.equal(person(r,'Juan Vergara').worked,0);assert.equal(person(r,'Juan Vergara').vacation,1);assert.equal(person(r,'Sergio Cuello').aseoExtraDays,0);assert.equal(person(r,'Sergio Cuello').absent,1);assert.equal(person(r,'Luis Alcaino').vacation,0);assert.equal(person(r,'Luis Alcaino').aseoExtraDays,0);assert.equal(person(r,'Jose Cortes').worked,1);assert.equal(person(r,'Jose Cortes').aseoExtraDays,0);
+});
+
+test('ASEO no duplica jornada dominical al haber observación de reemplazo',()=>{
+ const r=run([],[{name:'ASEO',rows:[{index:2,cells:{5:c('J.VERGARA'),8:c('G.PONCE')}},{index:3,cells:{1:c('2026-10-11'),5:c('VAC','F9CB9C'),8:c('DEF','FFFF00'),10:c('Juan vacaciones / Gloria')}},{index:4,cells:{1:c('2026-10-11'),8:c('DEF','FFFF00')}}]}]);assert.equal(person(r,'Gloria Ponce').aseoExtraDays,1);assert.equal(person(r,'Gloria Ponce').replacementDays,0);
+});
+
+test('24 de octubre: color de vacaciones de Juan y una nota de lugar no generan reemplazo ni aviso',()=>{
+ const r=run([],[{name:'ASEO',rows:[{index:2,cells:{5:c('J.VERGARA'),6:c('S.CUELLO')}},{index:87,cells:{1:c('2026-10-24'),5:c('DEF','F9CB9C'),6:c('DEF'),10:c('CUELLO CUBRE DEF')}}]}]);assert.equal(person(r,'Juan Vergara').vacation,1);assert.equal(person(r,'Sergio Cuello').worked,1);assert.equal(person(r,'Sergio Cuello').replacementDays,0);assert(!r.issues.some(x=>x.date==='2026-10-24'));
 });
 test('L. Retamales está excluido aunque su columna histórica tenga asignaciones',()=>{
  const r=run([],[{name:'ASEO',rows:[{index:2,cells:{9:c('L.RETAMALES'),6:c('S.CUELLO')}},{index:3,cells:{1:c('2026-10-25'),9:c('ABCDEFGHI','FF0000'),6:c('ABC')}}]}]);
- assert.equal(person(r,'Sergio Cuello').worked,1);assert(!r.issues.some(x=>x.message.includes('RETAMALES')));assert(!r.summaries.some(x=>x.name.includes('Retamales')));
+ assert.equal(person(r,'Sergio Cuello').aseoExtraDays,1);assert(!r.issues.some(x=>x.message.includes('RETAMALES')));assert(!r.summaries.some(x=>x.name.includes('Retamales')));
 });
 test('lector XLSX conserva fechas, colores y columnas originales',async()=>{
  const ExcelJS=require('exceljs'),wb=new ExcelJS.Workbook(),s=wb.addWorksheet('Turnos');s.getCell('B3').value=new Date('2026-10-16T00:00:00Z');s.getCell('F3').value='A.VILLEGAS';s.getCell('F3').fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFF0000'}};
@@ -62,4 +74,10 @@ test('los adicionales se valorizan por día y medio día y entran al imponible',
  const w={id:'demo',base:600000,salaryBasis:'month',employmentType:'employee',allowances:[]};
  const r=calculate({period:'2026-10',worked:20,absent:0,advance:0,replacementDays:1,overtimeHours:4},w,{rules,pensionData:{demo:{afpRate:.1,healthRate:.07,afcRate:.006}}});
  assert.equal(r.ready,true);assert.equal(r.replacementPay,20000);assert.equal(r.overtimePay,10000);assert.equal(r.totalTaxable,630000);assert(r.pensionTotal>0);
+});
+
+test('jornada extra ASEO paga día más 50%, sin inflar horas, y recalcula cotizaciones',()=>{
+ const {calculate}=require('../dist/calculator.js'),rules=require('../dist/payroll-rules.js');const w={id:'demo',base:600000,salaryBasis:'month',employmentType:'employee',allowances:[]},context={rules,pensionData:{demo:{afpRate:.1,healthRate:.07,afcRate:.006}}};
+ const input={period:'2026-10',worked:20,absent:0,advance:40000,aseoExtraDays:2,replacementDays:1},r=calculate(input,w,context);assert.equal(r.ready,true);assert.equal(r.aseoExtraPay,60000);assert.equal(r.replacementPay,20000);assert.equal(r.overtimeHours,0);assert.equal(r.totalTaxable,680000);assert(r.pensionTotal>calculate({...input,aseoExtraDays:0},w,context).pensionTotal);assert.equal(r.advance,40000);
+ assert(calculate({...input,aseoExtraDays:.5},w,context).errors.length);assert(calculate({...input,aseoExtraDays:-1},w,context).errors.length);assert(calculate({...input,aseoExtraDays:32},w,context).errors.length);
 });

@@ -1,7 +1,7 @@
 const crypto=require('node:crypto');
 const {StoreError}=require('./draft-store.cjs');
-const fields=['worked','absent','vacation','replacementDays','overtimeHours'];
-const labels={worked:'Días base',absent:'Ausencias sin goce',vacation:'Vacaciones pagadas',replacementDays:'Días adicionales',overtimeHours:'Horas de cobertura'};
+const fields=['worked','absent','vacation','replacementDays','overtimeHours','aseoExtraDays'];
+const labels={worked:'Días base',absent:'Ausencias sin goce',vacation:'Vacaciones pagadas',replacementDays:'Días adicionales',overtimeHours:'Horas de cobertura',aseoExtraDays:'Jornadas extra ASEO con 50%'};
 function key(env){if(!env.AUTH_SESSION_SECRET)throw new StoreError(503,'Falta configurar el acceso privado.');return crypto.createHash('sha256').update('chr-attendance-preview-v1|'+env.AUTH_SESSION_SECRET).digest();}
 function seal(value,env){const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',key(env),iv);const data=Buffer.concat([cipher.update(JSON.stringify(value),'utf8'),cipher.final()]);return Buffer.concat([iv,cipher.getAuthTag(),data]).toString('base64url');}
 function unseal(token,env){

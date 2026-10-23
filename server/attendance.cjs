@@ -56,10 +56,10 @@ function analyze(sheets,period,workers){
  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(period||''))throw Error('Selecciona un mes válido.');
  const roster=workers.map(w=>({...w,aliases:[norm(w.name),...(knownAliases[Object.keys(knownAliases).find(k=>norm(k)===norm(w.name))]||[]).map(norm)]}));
  const byName=name=>roster.find(w=>norm(w.name)===norm(name));
- function matches(value,sheet){const t=' '+norm(value)+' ';return roster.filter(w=>w.aliases.some(a=>t.includes(' '+a+' '))).filter(w=>!(norm(sheet)==='ASEO'&&norm(w.name)==='LUIS ALCAINO'&&norm(value)==='L ALCAINO'));}
+ function matches(value,sheet){const t=' '+norm(value)+' ';return roster.filter(w=>w.aliases.some(a=>t.includes(' '+a+' ')));}
  function one(value,sheet){const found=matches(value,sheet);return found.length===1?found[0]:null;}
- const summaries=new Map(roster.map(w=>[w.id,{worker:w.id,name:w.name,role:w.role,worked:0,absent:0,vacation:0,replacementDays:0,overtimeHours:0,issues:[],events:[]}]));
- const issues=[],days=new Map(),replacements=new Map(),sourceDates={};
+ const summaries=new Map(roster.map(w=>[w.id,{worker:w.id,name:w.name,role:w.role,worked:0,absent:0,vacation:0,replacementDays:0,overtimeHours:0,aseoExtraDays:0,issues:[],events:[]}]));
+ const issues=[],days=new Map(),replacements=new Map(),sourceDates={},aseoExtras=new Map();
  function issue(message,source,ids=[]){const item={message,...source};issues.push(item);for(const id of ids)if(summaries.has(id))summaries.get(id).issues.push(item);}
  function record(w,kind,source){const key=w.id+'|'+source.date;const old=days.get(key);if(old&&old.kind!==kind){if(kind==='worked')return;if(old.kind!=='worked'){issue('Estados incompatibles para la misma fecha.',source,[w.id]);return;}}if(!old||kind!=='worked')days.set(key,{worker:w.id,kind,...source});}
  const special=new Set(['Angel Villegas','Luis San Martin','Eduardo de la Prida'].map(n=>byName(n)?.id).filter(Boolean));
@@ -76,6 +76,16 @@ function analyze(sheets,period,workers){
     let kind=colorKind(cell.color);if(norm(value)==='VAC')kind='vacation';
     if(norm(value)==='LM'){issue('Licencia médica: requiere revisar el tratamiento del período.',ref,[w.id]);continue;}
     if(kind==='unknown'){issue('Color no definido: '+cell.color,ref,[w.id]);continue;}
+    if(name==='ASEO'&&(new Date(date+'T00:00:00Z').getUTCDay()===0||norm(w.name)==='LUIS ALCAINO')){
+     const sunday=new Date(date+'T00:00:00Z').getUTCDay()===0;
+     if(kind!=='worked'){
+      if(norm(w.name)==='LUIS ALCAINO')summaries.get(w.id).events.push({...ref,kind,credit:'Sin adicional de aseo',text:value});
+      else record(w,kind,{...ref,text:value});
+      continue;
+     }
+     const credit=sunday?'aseoExtraDays':'replacementDays';
+     aseoExtras.set(date+'|'+w.id,{...ref,worker:w.id,kind:'worked',credit,amount:1,text:value,observation:sunday?'Jornada adicional de domingo en ASEO: valor del día + 50%':'Jornada adicional de ASEO: valor de un día'});continue;
+    }
     if(kind==='absent')absent.push(w.id);record(w,kind,{...ref,text:value});
    }
    if(!observation)continue;
@@ -95,7 +105,7 @@ function analyze(sheets,period,workers){
     const parts=observation.split('/');if(parts.length===2){let missing=one(parts[0],sheet.name),replacer=one(parts[1],sheet.name);
      if(!missing&&/\bJUAN\b/.test(norm(parts[0])))missing=byName('Juan Vergara');
      if(missing&&replacer){const key=date+'|'+replacer.id+'|'+missing.id;replacements.set(key,{replacer:replacer.id,missing:missing.id,...source,observation,kind:'replacement'});}else issue('Los dos nombres del reemplazo requieren revisión: '+observation,source);
-    }else if(/CUBRE/.test(norm(observation)))issue('Observación sin dos nombres: no se asignó pago adicional.',source);
+    }
    }
   }
  }
@@ -111,6 +121,7 @@ function analyze(sheets,period,workers){
  }
  // One day per worker/date, even when the name appears in both day and afternoon columns.
  for(const event of days.values()){const s=summaries.get(event.worker);s[event.kind==='vacation'?'vacation':event.kind==='absent'?'absent':'worked']++;s.events.push(event);}
+ for(const event of aseoExtras.values()){const s=summaries.get(event.worker);s[event.credit]+=event.amount;s.events.push(event);}
  const sharedHandled=new Set();
  for(const date of new Set([...days.values()].map(e=>e.date))){
   if(date==='2026-10-16')continue;
@@ -127,6 +138,7 @@ function analyze(sheets,period,workers){
  const fullSpecialDays=new Set();
  for(const e of replacements.values()){
   const s=summaries.get(e.replacer);if(e.kind==='honorarios-day'){s.events.push(e);continue;}
+  if(norm(e.sheet)==='ASEO'&&aseoExtras.has(e.date+'|'+e.replacer))continue;
   if(e.kind==='internal'){issue('Cambio interno: confirmar si genera un adicional.',e,[e.replacer]);continue;}
   if(e.date==='2026-10-16'&&norm(s.name)==='CRISTIAN ALLENDES'){s.events.push({...e,credit:'Sin adicional: excepción confirmada'});continue;}
   if(special.has(e.replacer)&&special.has(e.missing)){

@@ -83,7 +83,7 @@ $('transfer-form').addEventListener('submit',async event=>{
 $('backup').addEventListener('click',()=>downloadBlob(new Blob([JSON.stringify({format:'nomina-compartida-v2',drafts},null,2)],{type:'application/json'}),'nomina-respaldo-'+new Date().toISOString().slice(0,10)+'.json'));
 async function publishCandidates(candidates){
  if(committee)return;let count=0,failed=0,skipped=0;
- for(const [id,entry]of Object.entries(candidates)){if(!entry||typeof entry!=='object'){failed++;continue;}const data=entry.data||entry,key=data.worker+'_'+data.period;if(drafts[key]){skipped++;continue;}try{const response=await api('api/drafts',{worker:data.worker,period:data.period,worked:data.worked,absent:data.absent,advance:data.advance,expectedRevision:0});drafts[response.draft.id]=response.draft;count++;}catch{failed++;}}
+ for(const [id,entry]of Object.entries(candidates)){if(!entry||typeof entry!=='object'){failed++;continue;}const data=entry.data||entry,key=data.worker+'_'+data.period;if(drafts[key]){skipped++;continue;}try{const response=await api('api/drafts',{worker:data.worker,period:data.period,...Object.fromEntries(Payroll.fields.map(field=>[field,data[field]??0])),expectedRevision:0});drafts[response.draft.id]=response.draft;count++;}catch{failed++;}}
  renderBoard();toast(count+' publicados · '+skipped+' existentes omitidos'+(failed?' · '+failed+' no se pudieron publicar.':'.'));
 }
 $('import-local').addEventListener('click',async()=>{$('import-local').disabled=true;try{await publishCandidates(legacyDrafts);}finally{$('import-local').disabled=false;}});

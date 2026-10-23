@@ -9,7 +9,7 @@ class DraftService{
  async save(input,identity,sourceSync=null){
   if(identity.role!=='admin')throw new StoreError(403,'El comité tiene acceso de solo lectura a los borradores.');
   const expected=revision(input.expectedRevision),w=this.payroll.WORKERS.find(x=>x.id===input.worker);if(!w)throw new StoreError(400,'Trabajador no válido.');
-  const data={worker:w.id,period:input.period,worked:input.worked,absent:input.absent,advance:input.advance,vacation:input.vacation??0,replacementDays:input.replacementDays??0,overtimeHours:input.overtimeHours??0};
+  const data={worker:w.id,period:input.period,worked:input.worked,absent:input.absent,advance:input.advance,vacation:input.vacation??0,replacementDays:input.replacementDays??0,overtimeHours:input.overtimeHours??0,aseoExtraDays:input.aseoExtraDays??0};
   const result=this.payroll.Payroll.calculate(data,w);if(result.errors.length)throw new StoreError(422,result.errors.join(' '));
   const id=w.id+'_'+data.period,current=await this.store.get(id);
   if(current?.status==='transferred')throw new StoreError(423,'La transferencia ya está registrada. Este borrador está bloqueado.');

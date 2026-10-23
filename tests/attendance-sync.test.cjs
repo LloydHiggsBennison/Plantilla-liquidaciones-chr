@@ -38,3 +38,9 @@ test('no inventa asistencia al faltar registros ni altera una referencia habitua
  const reference=await sync.preview(report({scheduleReference:'Horario habitual'}),service,admin,'excel',env);assert.equal(reference.rows[0].state,'reference');assert.equal(reference.rows[0].nextAmount,reference.rows[0].currentAmount);
  const unchanged=await sync.preview(report({worked:20,absent:0}),service,admin,'excel',env);assert.equal(unchanged.rows[0].state,'unchanged');
 }));
+
+test('la actualización guarda el recargo ASEO, conserva anticipos y no lo repite al releer',async()=>fixture(async service=>{
+ const source=report({worked:20,absent:0,aseoExtraDays:2});const p=await sync.preview(source,service,admin,'google',env);assert.equal(p.rows[0].input.aseoExtraDays,2);assert.equal(p.rows[0].changes[0].field,'aseoExtraDays');
+ const response=await sync.apply({token:p.token,workers:['demo']},service,admin,env);assert.equal(response.results[0].state,'updated');const saved=await service.store.get('demo_2026-10');assert.equal(saved.data.advance,40000);assert.equal(saved.data.aseoExtraDays,2);assert.equal(saved.snapshot.result.aseoExtraPay,90000);
+ const again=await sync.preview(source,service,admin,'google',env);assert.equal(again.rows[0].state,'unchanged');
+}));

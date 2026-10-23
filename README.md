@@ -104,3 +104,7 @@ La excepción confirmada del 16 de octubre de 2026 asigna un día adicional a Ma
 Juan Ponce usa como referencia lunes a viernes, 08:00 a 16:00, cuando no tiene registros explícitos en las hojas del mes. La interfaz identifica esta referencia y conserva ausencias, vacaciones y adicionales ya registrados en su borrador. Cortes y Díaz cuentan fechas únicas aunque aparezcan tanto en día como tarde; sus reemplazos se suman aparte. L. Retamales está excluido de la importación.
 
 La conexión se configura una vez siguiendo [la guía de Google Cloud y Vercel](docs/conectar-google-sheets.md). Los cambios de Google Sheets se leen al pulsar Actualizar; no se aplican automáticamente a los borradores.
+
+### Jornadas adicionales de ASEO
+
+Un domingo asignado y trabajado en ASEO se registra aparte de los días base como una jornada adicional con pago del valor diario más 50% (tarifa diaria × 1,5). Se aplica a cualquier trabajador asignado a ASEO, incluido Luis Alcaino. No se extiende a Turnos o Nocheros. Una jornada de ASEO marcada como ausencia o vacaciones no genera este adicional. Luis asignado a ASEO fuera del domingo recibe un día adicional normal, incluido el lunes 12 de octubre de 2026. Las observaciones de ASEO sin dos nombres no crean reemplazo ni advertencia: el 24 de octubre, Juan Vergara conserva sus vacaciones pagadas y Sergio Cuello no recibe un reemplazo adicional. No se duplica la jornada dominical si además existe una observación de reemplazo para esa persona en ASEO. El recargo se muestra separado en los haberes y forma parte del imponible.
