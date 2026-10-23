@@ -46,7 +46,7 @@
     if(rules.fixedBonusAbsencePolicy==='prorate'){const discount=a.amount-round(a.amount*fraction);amount=a.amount-discount;r.fixedBonusesDiscount+=discount;note='Proporcional a los días sin goce';r.adjustments.push({label:a.label+': descuento proporcional',amount:discount});}
     else if(rules.fixedBonusAbsencePolicy!=='fixed')r.pending.push('Falta definir el descuento por ausencia de '+a.label+'.');
    }else if(!a.taxable&&r.absent>0){
-    if(rules.nonTaxableAbsencePolicy==='prorate')amount=round(a.amount*fraction);
+    if(rules.nonTaxableAbsencePolicy==='prorate'){amount=round(a.amount*fraction);note='Proporcional a los días sin goce';r.adjustments.push({label:a.label+': descuento proporcional',amount:a.amount-amount});}
     else if(rules.nonTaxableAbsencePolicy==='fixed')note='Se mantiene completa según la regla acordada';
     else r.pending.push('Falta definir el pago de '+a.label+' con inasistencias.');
    }

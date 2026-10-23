@@ -32,7 +32,7 @@ Los datos y borradores se guardan solo en el navegador. No se sincronizan entre 
 
 - Con una o más ausencias sin goce, el bono de asistencia se elimina completo.
 - El sueldo mensual y los bonos imponibles fijos se ajustan proporcionalmente, con divisor 30.
-- La colación y movilización mensuales se mantienen completas según la regla de negocio acordada. Las tarifas diarias se multiplican por la asistencia efectiva.
+- La colación y movilización mensuales se rebajan por ausencia con divisor 30, redondeando cada asignación al peso. Las tarifas diarias se multiplican por la asistencia efectiva.
 - Se recalculan AFP, salud, cesantía, APV e impuesto único según el perfil y el período.
 - Se restan los anticipos al final. Los descuentos de ausencias ya están aplicados en los haberes y no se vuelven a restar.
 - Las exenciones y los casos a honorarios se configuran por persona.

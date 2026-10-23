@@ -1,5 +1,5 @@
 (function(root){
- const rules={version:'2026-10-23-v1',employerName:'Comunidad de ejemplo',nonTaxableAbsencePolicy:'fixed',fixedBonusAbsencePolicy:'prorate',
+ const rules={version:'2026-10-23-v2',employerName:'Comunidad de ejemplo',nonTaxableAbsencePolicy:'prorate',fixedBonusAbsencePolicy:'prorate',
   // Solo parámetros verificados por período. No se reutilizan en meses futuros.
   periods:{
    '2026-09':{uf:41057.20,utm:71721,afpCapUF:90,afcCapUF:135.2},

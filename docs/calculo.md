@@ -5,7 +5,7 @@ Las reglas de negocio siguientes fueron confirmadas por el usuario el 23 de octu
 - Una o más inasistencias sin goce eliminan todo el bono de asistencia del período.
 - El descuento del sueldo mensual se calcula sobre el sueldo base dividido por 30 y multiplicado por los días de ausencia. Se redondea el descuento total al peso y se resta de la base. Los días de asistencia efectiva no descuentan los descansos pagados.
 - Los demás bonos imponibles mensuales fijos, incluido el reajuste, se prorratean según `(30 - ausencias) / 30`, con mínimo cero.
-- Colación y movilización mensuales se mantienen completas.
+- Colación y movilización mensuales se rebajan proporcionalmente por ausencias: monto mensual × máx(0, 30 − ausencias) ÷ 30, redondeado al peso por asignación.
 - Para pagos diarios se multiplica la tarifa por los días efectivamente trabajados. La ausencia no se descuenta otra vez. Las asignaciones diarias se multiplican por esos mismos días.
 - Las cotizaciones se recalculan sobre el nuevo imponible. Los porcentajes se configuran por persona; un descuento cero documentado se conserva como cero y no se infiere la causa.
 - Los anticipos se restan al final, después de cotizaciones e impuesto. Si superan el disponible, no se presenta un total negativo como transferencia válida.
