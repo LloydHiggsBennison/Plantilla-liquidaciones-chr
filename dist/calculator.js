@@ -19,13 +19,15 @@
   const dailyRate=w.salaryBasis==='day'?w.dailyRate:w.base/30;
   if((r.replacementDays||r.overtimeHours)&&(!Number.isFinite(dailyRate)||dailyRate<0))r.pending.push('Falta la tarifa diaria del trabajador.');
   r.replacementPay=round(dailyRate*r.replacementDays)||0;r.overtimePay=round(dailyRate*r.overtimeHours/8)||0;
+  r.vacationPay=w.salaryBasis==='day'?(round(dailyRate*r.vacation)||0):0;
   if(r.worked===0&&r.absent===0&&r.vacation===0)r.pending.push('Registra los días de asistencia o de ausencia para calcular el período.');
   r.kind=w.employmentType==='honorarios'?'honorarios':'employee';r.insurance=r.kind==='employee'?insurance?.[w.id]:null;r.rulesVersion=rules.version;
   if(r.kind==='honorarios'){
    const contract=rules.honorarios?.[w.id],rate=rules.honorariosRetentionByYear?.[Number(d.period.slice(0,4))];
    if(contract?.amountType!=='gross'||typeof contract?.receiverWithholds!=='boolean')r.pending.push('Confirma el monto bruto y quién retiene en los honorarios.');
    if(typeof rate!=='number')r.pending.push('Falta la tasa de honorarios del año seleccionado.');
-   r.gross=round(w.dailyRate*r.worked)+r.replacementPay+r.overtimePay;r.incomeRows.push({label:'Honorarios brutos ('+r.worked+' días)',amount:round(w.dailyRate*r.worked),note:'Tarifa bruta por día: '+w.dailyRate});
+   r.gross=round(w.dailyRate*r.worked)+r.vacationPay+r.replacementPay+r.overtimePay;r.incomeRows.push({label:'Honorarios brutos ('+r.worked+' días)',amount:round(w.dailyRate*r.worked),note:'Tarifa bruta por día: '+w.dailyRate});
+   if(r.vacation)r.incomeRows.push({label:'Vacaciones pagadas ('+r.vacation+' días)',amount:r.vacationPay});
    if(r.replacementDays)r.incomeRows.push({label:'Reemplazos ('+r.replacementDays+' días)',amount:r.replacementPay});
    if(r.overtimeHours)r.incomeRows.push({label:'Cobertura compartida ('+r.overtimeHours+' horas)',amount:r.overtimePay,note:'4 horas equivalen a medio día, según la regla acordada'});
    r.withholding=contract?.receiverWithholds?round(r.gross*(rate||0)):0;r.selfPpm=contract?.receiverWithholds?0:round(r.gross*(rate||0));
@@ -41,7 +43,8 @@
   const fraction=Math.max(0,30-r.absent)/30;
   if(w.salaryBasis==='day')r.baseAfterAbsences=round(w.dailyRate*r.worked);
   else{r.absenceSalaryDiscount=Math.min(w.base,round(w.base*r.absent/30));r.baseAfterAbsences=w.base-r.absenceSalaryDiscount;}
-  r.incomeRows.push({label:w.salaryBasis==='day'?'Sueldo base ('+r.worked+' días)':'Sueldo base del período',amount:r.baseAfterAbsences,taxable:true,note:r.absenceSalaryDiscount?'Base mensual menos descuento por ausencias':'Sueldo configurado'});
+  r.incomeRows.push({label:w.salaryBasis==='day'?'Sueldo base ('+r.worked+' días)':r.vacation?'Sueldo base (incluye vacaciones pagadas)':'Sueldo base del período',amount:r.baseAfterAbsences,taxable:true,note:(r.absenceSalaryDiscount?'Base mensual menos descuento por ausencias':'Sueldo configurado')+(r.vacation&&w.salaryBasis!=='day'?' · '+r.vacation+' días de vacaciones remuneradas incluidos':'')});
+  if(r.vacation&&w.salaryBasis==='day')r.incomeRows.push({label:'Vacaciones pagadas ('+r.vacation+' días)',amount:r.vacationPay,taxable:true,note:'Tarifa diaria × días de vacaciones; no se descuentan como ausencia'});
   if(r.absenceSalaryDiscount)r.adjustments.push({label:'Sueldo: base mensual ÷ 30 × '+r.absent+' día(s)',amount:r.absenceSalaryDiscount});
   if(r.replacementDays)r.incomeRows.push({label:'Reemplazos ('+r.replacementDays+' días)',amount:r.replacementPay,taxable:true,note:'Valor del día del trabajador × días adicionales'});
   if(r.overtimeHours)r.incomeRows.push({label:'Cobertura compartida ('+r.overtimeHours+' horas)',amount:r.overtimePay,taxable:true,note:'4 horas equivalen a medio día, según la regla acordada'});

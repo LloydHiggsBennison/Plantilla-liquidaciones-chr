@@ -11,6 +11,14 @@ const monthly={id:'monthly-demo',name:'Trabajador de prueba',employmentType:'emp
 const pension={afp:'Habitat',afpRate:0.1127,health:'Fonasa',healthRate:0.07,afcRate:0.006,apv:0};
 const data={period:'2026-10',worked:30,absent:0,advance:50000};
 function calc(d={},w=monthly,p=pension,rules=config){return calculate({...data,...d},w,{rules,pensionData:{[w.id]:p}});}
+test('las vacaciones mensuales mantienen sueldo y bonos completos sin duplicar el pago',()=>{
+ const complete=calc({worked:30,vacation:0}),vacation=calc({worked:16,vacation:14}),fullVacation=calc({worked:0,vacation:30});
+ for(const r of [vacation,fullVacation]){assert.equal(r.ready,true);assert.equal(r.baseAfterAbsences,monthly.base);assert.equal(r.transfer,complete.transfer);assert.equal(r.absenceSalaryDiscount,0);assert.equal(r.attendanceBonusLoss,0);assert.equal(r.vacationPay,0);assert(r.incomeRows[0].label.includes('vacaciones pagadas'));}
+});
+test('para pago diario las vacaciones se agregan al sueldo y a la base de cotización',()=>{
+ const w={...monthly,salaryBasis:'day',base:null,dailyRate:40000,allowances:[]},r=calc({worked:5,vacation:2,absent:0,advance:0},w);
+ assert.equal(r.ready,true);assert.equal(r.vacationPay,80000);assert.equal(r.totalTaxable,280000);assert.equal(r.incomeRows.find(x=>x.label.startsWith('Vacaciones pagadas')).amount,80000);assert.equal(r.afp,31556);
+});
 test('mes completo: imponible, no imponible y transferencia conciliados',()=>{const r=calc();assert.equal(r.totalTaxable,990000);assert.equal(r.nonTaxable,110000);assert.equal(r.afp,111573);assert.equal(r.health,69300);assert.equal(r.afc,5940);assert.equal(r.tax,0);assert.equal(r.transfer,863187);assert.equal(r.ready,true);assert.equal(r.gross-r.totalDeductions,r.transfer);});
 test('una ausencia elimina asistencia, prorratea bono fijo y recalcula cotizaciones',()=>{const r=calc({worked:29,absent:1});assert.equal(r.baseAfterAbsences,870000);assert.equal(r.absenceSalaryDiscount,30000);assert.equal(r.attendanceBonusLoss,30000);assert.equal(r.fixedBonusesDiscount,2000);assert.equal(r.totalTaxable,928000);assert.equal(r.nonTaxable,106333);assert.equal(r.adjustments.find(x=>x.label==='Colación: descuento proporcional').amount,1667);assert.equal(r.adjustments.find(x=>x.label==='Movilización: descuento proporcional').amount,2000);assert.equal(r.afp,104586);assert.equal(r.health,64960);assert.equal(r.afc,5568);assert.equal(r.transfer,809219);assert.equal(r.gross-r.totalDeductions,r.transfer);});
 test('dos ausencias no descuentan el bono de asistencia dos veces',()=>{const r=calc({worked:28,absent:2});assert.equal(r.attendanceBonusLoss,30000);assert.equal(r.incomeRows.find(x=>x.label==='Bono asistencia').amount,0);assert(!r.deductionRows.some(x=>/asistencia|ausencia/i.test(x.label)));});
