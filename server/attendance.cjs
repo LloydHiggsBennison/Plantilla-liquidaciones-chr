@@ -59,14 +59,14 @@ function analyze(sheets,period,workers){
  function matches(value,sheet){const t=' '+norm(value)+' ';return roster.filter(w=>w.aliases.some(a=>t.includes(' '+a+' '))).filter(w=>!(norm(sheet)==='ASEO'&&norm(w.name)==='LUIS ALCAINO'&&norm(value)==='L ALCAINO'));}
  function one(value,sheet){const found=matches(value,sheet);return found.length===1?found[0]:null;}
  const summaries=new Map(roster.map(w=>[w.id,{worker:w.id,name:w.name,role:w.role,worked:0,absent:0,vacation:0,replacementDays:0,overtimeHours:0,issues:[],events:[]}]));
- const issues=[],days=new Map(),replacements=new Map(),sourceDates={},doubleDayReview=new Set();
+ const issues=[],days=new Map(),replacements=new Map(),sourceDates={};
  function issue(message,source,ids=[]){const item={message,...source};issues.push(item);for(const id of ids)if(summaries.has(id))summaries.get(id).issues.push(item);}
  function record(w,kind,source){const key=w.id+'|'+source.date;const old=days.get(key);if(old&&old.kind!==kind){if(kind==='worked')return;if(old.kind!=='worked'){issue('Estados incompatibles para la misma fecha.',source,[w.id]);return;}}if(!old||kind!=='worked')days.set(key,{worker:w.id,kind,...source});}
  const special=new Set(['Angel Villegas','Luis San Martin','Eduardo de la Prida'].map(n=>byName(n)?.id).filter(Boolean));
  for(const sheet of sheets){const name=norm(sheet.name);if(!['TURNOS','NOCHEROS','ASEO'].includes(name))continue;const header=sheet.rows.find(r=>r.index===2)?.cells||{};
   for(const row of sheet.rows){if(row.index<3)continue;const date=excelDate(row.cells[name==='ASEO'?1:2]?.value);if(!date||!date.startsWith(period+'-'))continue;
    (sourceDates[sheet.name]??=new Set()).add(date);const observation=String(row.cells[name==='TURNOS'?11:name==='NOCHEROS'?7:10]?.value||'');
-   const source={sheet:sheet.name,date,row:row.index};const cols=name==='ASEO'?[3,4,5,6,7,8,9]:name==='NOCHEROS'?[4,5]:[5,6,7,8,9,10];const absent=[],rowWorked=new Set();
+   const source={sheet:sheet.name,date,row:row.index};const cols=name==='ASEO'?[3,4,5,6,7,8,9]:name==='NOCHEROS'?[4,5]:[5,6,7,8,9,10];const absent=[];
    for(const col of cols){const cell=row.cells[col];if(!cell)continue;const value=String(cell.value||'').trim();if(!value)continue;
     // Former employee: keep historical source cells, but do not import this column.
     if(['L RETAMALES','RETAMALES'].includes(norm(name==='ASEO'?header[col]?.value:value)))continue;
@@ -76,8 +76,6 @@ function analyze(sheets,period,workers){
     let kind=colorKind(cell.color);if(norm(value)==='VAC')kind='vacation';
     if(norm(value)==='LM'){issue('Licencia médica: requiere revisar el tratamiento del período.',ref,[w.id]);continue;}
     if(kind==='unknown'){issue('Color no definido: '+cell.color,ref,[w.id]);continue;}
-    if(kind==='worked'&&w.salaryBasis==='day'&&rowWorked.has(w.id)&&!doubleDayReview.has(w.id)){doubleDayReview.add(w.id);issue('Aparece en día y tarde: confirmar si corresponde uno o dos días pagados antes de aplicar.',ref,[w.id]);}
-    if(kind==='worked')rowWorked.add(w.id);
     if(kind==='absent')absent.push(w.id);record(w,kind,{...ref,text:value});
    }
    if(!observation)continue;
@@ -99,6 +97,16 @@ function analyze(sheets,period,workers){
      if(missing&&replacer){const key=date+'|'+replacer.id+'|'+missing.id;replacements.set(key,{replacer:replacer.id,missing:missing.id,...source,observation,kind:'replacement'});}else issue('Los dos nombres del reemplazo requieren revisión: '+observation,source);
     }else if(/CUBRE/.test(norm(observation)))issue('Observación sin dos nombres: no se asignó pago adicional.',source);
    }
+  }
+ }
+ // Maintenance has a habitual schedule rather than an assignment column.
+ const maintenance=byName('Juan Ponce');
+ if(maintenance&&Object.values(sourceDates).some(d=>d.size)&&![...days.values()].some(e=>e.worker===maintenance.id)){
+  summaries.get(maintenance.id).scheduleReference='Horario habitual: lunes a viernes, 08:00–16:00. Revisar novedades del mes.';
+  const [year,month]=period.split('-').map(Number),end=new Date(Date.UTC(year,month,0)).getUTCDate();
+  for(let day=1;day<=end;day++){
+   const date=new Date(Date.UTC(year,month-1,day));if([0,6].includes(date.getUTCDay()))continue;
+   record(maintenance,'worked',{date:date.toISOString().slice(0,10),sheet:'Horario habitual',text:'Lunes a viernes, 08:00–16:00'});
   }
  }
  // One day per worker/date, even when the name appears in both day and afternoon columns.

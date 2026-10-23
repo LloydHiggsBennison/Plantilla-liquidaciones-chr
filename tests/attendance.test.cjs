@@ -12,10 +12,17 @@ test('fechas mensuales, colores y nombres repetidos cuentan fechas únicas',()=>
 test('PV solo identifica lugar; no agrega horas ni un segundo día a Cristian',()=>{
  const r=run([turn(1,{9:c('C.ALLENDES'),10:c('PV 16-24')})]);const s=person(r,'Cristian Allendes');assert.equal(s.worked,1);assert.equal(s.overtimeHours,0);assert.equal(s.replacementDays,0);
 });
-test('dos turnos de un trabajador por día requieren confirmar el número de jornadas pagadas',()=>{
+test('CORTES y DIAZ se reconocen; sus dos columnas cuentan una fecha sin bloquear la importación',()=>{
  const roster=workers.map(w=>({...w,salaryBasis:w.name==='Jose Cortes'?'day':'month'}));
- const r=analyze([{name:'Turnos',rows:[turn(3,{5:c('J.CORTÉS'),6:c('J.CORTÉS')})]}],'2026-10',roster);
- assert.equal(person(r,'Jose Cortes').worked,1);assert(person(r,'Jose Cortes').issues.some(x=>x.message.includes('uno o dos días')));
+ const r=analyze([{name:'Turnos',rows:[turn(3,{5:c('CORTES'),6:c('CORTES'),7:c('DIAZ'),8:c('DIAZ')})]}],'2026-10',roster);
+ assert.equal(person(r,'Jose Cortes').worked,1);assert.equal(person(r,'Jose Cortes').issues.length,0);assert.equal(person(r,'Victor Diaz').worked,1);
+});
+test('Juan Ponce usa lunes a viernes como referencia sin duplicar registros explícitos',()=>{
+ const roster=[...workers,{id:'maintenance',name:'Juan Ponce',role:'Mantención',salaryBasis:'month'}];
+ const r=analyze([{name:'Turnos',rows:[turn(1,{5:c('CORTES')})]}],'2026-10',roster),juan=person(r,'Juan Ponce');
+ assert.equal(juan.worked,22);assert(juan.scheduleReference);assert(juan.events.every(e=>![0,6].includes(new Date(e.date+'T00:00:00Z').getUTCDay())));
+ const explicit=analyze([{name:'Turnos',rows:[turn(1,{5:c('Juan Ponce','FF0000')})]}],'2026-10',roster);assert.equal(person(explicit,'Juan Ponce').absent,1);assert.equal(person(explicit,'Juan Ponce').worked,0);
+ const empty=analyze([],'2026-10',roster);assert.equal(person(empty,'Juan Ponce').worked,0);
 });
 test('un reemplazante externo que cubre solo recibe un día completo',()=>{
  const r=run([turn(8,{6:c('A.VILLEGAS','FF0000'),7:c('M.ARAYA A.')},'M.ARAYA A. POR A.VILLEGAS')]);assert.equal(person(r,'Angel Villegas').absent,1);assert.equal(person(r,'Manuel Araya Aparicio').replacementDays,1);assert.equal(person(r,'Manuel Araya Aparicio').overtimeHours,0);
