@@ -2,17 +2,22 @@
 const tabStorage='chr-tab-session-v2';
 const form=document.querySelector('form');
 const card=document.querySelector('.card');
+const loading=document.getElementById('session-loading');
+function showLogin(){loading.hidden=true;card.hidden=false;}
 function error(message){let node=document.getElementById('login-error');if(!node){node=document.createElement('p');node.id='login-error';node.className='error';node.setAttribute('role','alert');form.before(node);}node.textContent=message;}
 function forget(){try{sessionStorage.removeItem(tabStorage);}catch{}}
 function openApp(token){
  const frame=document.createElement('iframe');frame.title='Remuneraciones';frame.src='/s/'+encodeURIComponent(token)+'/index.html';frame.style.cssText='position:fixed;inset:0;border:0;width:100%;height:100%;background:#f6f8f5';
- card.hidden=true;document.body.append(frame);
+ card.hidden=true;loading.hidden=false;frame.hidden=true;
+ frame.addEventListener('load',()=>{loading.hidden=true;frame.hidden=false;},{once:true});
+ document.body.append(frame);
 }
 async function restore(){
- if(location.pathname==='/signed-out'){forget();history.replaceState(null,'','/');return;}
- let token;try{token=sessionStorage.getItem(tabStorage);}catch{return;}
- if(!token)return;
+ if(location.pathname==='/signed-out'){forget();history.replaceState(null,'','/');showLogin();return;}
+ let token;try{token=sessionStorage.getItem(tabStorage);}catch{showLogin();return;}
+ if(!token){showLogin();return;}
  try{const response=await fetch('/session-check',{headers:{'X-CHR-Tab':token},cache:'no-store',credentials:'same-origin'});if(response.ok){openApp(token);return;}forget();}catch{error('No se pudo recuperar el acceso. Intenta nuevamente.');}
+ showLogin();
 }
 form.addEventListener('submit',async event=>{
  event.preventDefault();const button=form.querySelector('button');button.disabled=true;
