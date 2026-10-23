@@ -56,14 +56,17 @@ async function handler(req,res,assetRoot,dependencies={}){
   const json=(status,value)=>send(res,status,JSON.stringify(value),'application/json; charset=utf-8');
   try{
    let input;
+   if(resource.startsWith('api/attendance')&&identity.role!=='admin')return json(403,{error:'Solo administración puede actualizar desde la planilla.'});
+   const draftService=()=>{let service=dependencies.service||serviceCache.get(assetRoot);if(!service){service=new DraftService(getStore(),loadPayroll(assetRoot));serviceCache.set(assetRoot,service);}return service;};
+   if(resource==='api/attendance/connection'&&req.method==='GET')return json(200,{configured:Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL&&process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)});
    if(req.method==='POST'){
     if(!sameOrigin(req)||!auth.validCsrf(req.headers['x-csrf-token'])||!auth.equal(req.headers['x-csrf-token'],auth.csrfCookie(req)))return json(403,{error:'Solicitud no permitida.'});
-    if(resource==='api/attendance'&&identity.role!=='admin')return json(403,{error:'Solo administración puede leer e importar la planilla.'});
-    try{input=await readJson(req,resource==='api/attendance'?3*1024*1024:8192);}catch{return json(400,{error:'Datos de solicitud inválidos o archivo demasiado grande.'});}
+    try{input=await readJson(req,['api/attendance','api/attendance/preview'].includes(resource)?3*1024*1024:resource==='api/attendance/apply'?128*1024:8192);}catch{return json(400,{error:'Datos de solicitud inválidos o archivo demasiado grande.'});}
     if(resource==='api/drafts'&&identity.role!=='admin')return json(403,{error:'El comité no puede editar los borradores.'});
     if(resource.endsWith('/transfer')&&identity.role!=='committee')return json(403,{error:'Solo el comité puede registrar transferencias.'});
    }
-   if(resource==='api/attendance'&&['GET','POST'].includes(req.method)){
+   if(resource==='api/attendance/apply'&&req.method==='POST')return json(200,await require('../server/attendance-sync.cjs').apply(input,draftService(),identity));
+   if(['api/attendance','api/attendance/preview'].includes(resource)&&['GET','POST'].includes(req.method)){
     if(identity.role!=='admin')return json(403,{error:'Solo administración puede leer e importar la planilla.'});
     const attendance=require('../server/attendance.cjs');
     try{
@@ -75,10 +78,11 @@ async function handler(req,res,assetRoot,dependencies={}){
       sheets=await attendance.fromXlsx(Buffer.from(input.file,'base64'));
      }else sheets=await attendance.fromGoogle();
      const payroll=loadPayroll(assetRoot);
-     return json(200,attendance.analyze(sheets,period,payroll.WORKERS));
+     const report=attendance.analyze(sheets,period,payroll.WORKERS);
+     return json(200,resource==='api/attendance/preview'?await require('../server/attendance-sync.cjs').preview(report,draftService(),identity,req.method==='POST'?'excel':'google'):report);
     }catch(e){return json(e.status||422,{error:e.message||'No se pudo leer la planilla.'});}
    }
-   let service=dependencies.service||serviceCache.get(assetRoot);if(!service){service=new DraftService(getStore(),loadPayroll(assetRoot));serviceCache.set(assetRoot,service);}
+   const service=draftService();
    if(resource==='api/drafts'&&req.method==='GET')return json(200,{drafts:await service.list(url.searchParams.get('period')||req.query?.period||null)});
    if(resource==='api/drafts'&&req.method==='POST')return json(200,{draft:await service.save(input,identity)});
    const transfer=resource.match(/^api\/drafts\/([^/]+)\/transfer$/);if(transfer&&req.method==='POST')return json(200,{draft:await service.markTransferred(transfer[1],input,identity)});

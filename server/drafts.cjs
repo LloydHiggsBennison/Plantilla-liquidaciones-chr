@@ -6,7 +6,7 @@ function revision(value){if(!Number.isSafeInteger(value)||value<0)throw new Stor
 class DraftService{
  constructor(store,payroll){this.store=store;this.payroll=payroll;}
  async list(period){if(period&&!/^\d{4}-(0[1-9]|1[0-2])$/.test(period))throw new StoreError(400,'Período inválido.');return (await this.store.list(period)).sort((a,b)=>b.period.localeCompare(a.period)||a.snapshot.worker.name.localeCompare(b.snapshot.worker.name));}
- async save(input,identity){
+ async save(input,identity,sourceSync=null){
   if(identity.role!=='admin')throw new StoreError(403,'El comité tiene acceso de solo lectura a los borradores.');
   const expected=revision(input.expectedRevision),w=this.payroll.WORKERS.find(x=>x.id===input.worker);if(!w)throw new StoreError(400,'Trabajador no válido.');
   const data={worker:w.id,period:input.period,worked:input.worked,absent:input.absent,advance:input.advance,vacation:input.vacation??0,replacementDays:input.replacementDays??0,overtimeHours:input.overtimeHours??0};
@@ -15,7 +15,7 @@ class DraftService{
   if(current?.status==='transferred')throw new StoreError(423,'La transferencia ya está registrada. Este borrador está bloqueado.');
   if((current?.revision||0)!==expected)throw new StoreError(409,'El borrador cambió. Actualiza el tablero antes de guardar.');
   const now=new Date().toISOString(),snapshot=JSON.parse(JSON.stringify({worker:w,data,result}));
-  const record={id,worker:w.id,period:data.period,revision:expected+1,data,snapshot,status:result.ready?'pending':'draft',createdAt:current?.createdAt||now,savedAt:now,savedBy:identity.username,transferredAt:null,transferredBy:null,reference:'',audit:[...(current?.audit||[]),{action:'saved',by:identity.username,at:now,revision:expected+1,amount:result.transfer,snapshotHash:hash(snapshot)}]};
+  const record={id,worker:w.id,period:data.period,revision:expected+1,data,snapshot,status:result.ready?'pending':'draft',createdAt:current?.createdAt||now,savedAt:now,savedBy:identity.username,transferredAt:null,transferredBy:null,reference:'',sourceSync,audit:[...(current?.audit||[]),{action:'saved',by:identity.username,at:now,revision:expected+1,amount:result.transfer,snapshotHash:hash(snapshot),...(sourceSync?{sourceSync}:{})}]};
   const saved=await this.store.compareAndSet(record,expected);if(!saved)throw new StoreError(409,'Otro usuario actualizó este borrador. Recarga el tablero.');return saved;
  }
  async markTransferred(id,input,identity){

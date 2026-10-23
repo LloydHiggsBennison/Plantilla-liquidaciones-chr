@@ -29,6 +29,10 @@ test('flujo HTTP protege datos, rechaza CSRF y cierra sesión',async()=>{
   const forbidden=await request('/s/'+committeeTab+'/api/drafts',{...mutate,headers:{...mutate.headers,Cookie:committeeCookie+'; '+csrfCookie}});assert.equal(forbidden.status,403);
   assert.equal((await request('/s/'+committeeTab+'/api/attendance?period=2026-10',{headers:{Cookie:committeeCookie}})).status,403);
   assert.equal((await request('/s/'+committeeTab+'/api/attendance',{...mutate,headers:{...mutate.headers,Cookie:committeeCookie+'; '+csrfCookie}})).status,403);
+  for(const route of ['connection','preview?period=2026-10'])assert.equal((await request('/s/'+committeeTab+'/api/attendance/'+route,{headers:{Cookie:committeeCookie}})).status,403);
+  assert.equal((await request('/s/'+committeeTab+'/api/attendance/apply',{...mutate,headers:{...mutate.headers,Cookie:committeeCookie+'; '+csrfCookie}})).status,403);
+  assert.equal((await request(prefix+'/api/attendance/connection',{headers})).status,200);
+  assert.equal((await request(prefix+'/api/attendance/apply',{...mutate,headers:{...headers,Origin:base,'Content-Type':'application/json'}})).status,403);
   assert.equal((await request('/workers.js',{headers})).status,401);assert.equal((await request('/session-check',{headers})).status,401);assert.equal((await request('/session-check',{headers:{...headers,'X-CHR-Tab':tab}})).status,204);r=await request(prefix+'/workers.js',{headers});assert.equal(r.status,200);assert((await r.text()).includes('WORKERS'));assert.equal(r.headers.get('cdn-cache-control'),'no-store');
   assert.equal((await request(prefix+'/unknown',{headers})).status,404);
   r=await request('/',{headers});assert((await r.text()).includes('Iniciar sesión'));r=await request(prefix+'/index.html',{headers});assert((await r.text()).includes('Cerrar sesión'));
