@@ -1,3 +1,4 @@
+const canTransfer=['admin','committee'].includes(profile.role);
 const statusLabel={draft:'Datos pendientes',pending:'Pendiente de transferencia',transferred:'Transferencia realizada'};
 const dateLabel=value=>new Date(value).toLocaleString('es-CL',{dateStyle:'short',timeStyle:'short',timeZone:'America/Santiago'});
 let activeView=committee?'history':'payroll',pendingTransfer=null,refreshing=false,initialSyncComplete=false;
@@ -25,7 +26,7 @@ function navigate(view){
 function openRecord(id){const record=drafts[id];if(!record)return;$('worker').value=record.worker;$('period').value=record.period;loadRecord(record);navigate('payroll');window.scrollTo({top:0,behavior:'smooth'});}
 function card(record){
  const w=record.snapshot.worker,r=record.snapshot.result,paid=record.status==='transferred';
- return '<article class="transfer-card '+(paid?'paid':'')+'"><div class="transfer-heading"><div><h3>'+escapeHtml(w.name)+'</h3><p>'+escapeHtml(w.role)+'</p></div><strong class="transfer-amount">'+(r.ready?money(r.transfer):'Monto pendiente')+'</strong></div><div class="transfer-footer"><span class="badge">'+statusLabel[record.status]+'</span><div class="transfer-actions"><button class="button outline" data-open="'+escapeHtml(record.id)+'">Revisar</button>'+(committee&&record.status==='pending'?'<button class="button primary" data-transfer="'+escapeHtml(record.id)+'">Marcar realizada</button>':'')+'</div></div><details class="transfer-details"><summary>Detalles del registro</summary><p>'+escapeHtml(periodLabel(record.period))+' · Versión '+record.revision+'</p><p>Guardado por '+escapeHtml(record.savedBy)+' · '+dateLabel(record.savedAt)+'</p>'+(paid?'<p>Registrada por '+escapeHtml(record.transferredBy)+' · '+dateLabel(record.transferredAt)+(record.reference?'<br>Ref.: '+escapeHtml(record.reference):'')+'</p>':'')+'</details></article>';
+ return '<article class="transfer-card '+(paid?'paid':'')+'"><div class="transfer-heading"><div><h3>'+escapeHtml(w.name)+'</h3><p>'+escapeHtml(w.role)+'</p></div><strong class="transfer-amount">'+(r.ready?money(r.transfer):'Monto pendiente')+'</strong></div><div class="transfer-footer"><span class="badge">'+statusLabel[record.status]+'</span><div class="transfer-actions"><button class="button outline" data-open="'+escapeHtml(record.id)+'">Revisar</button>'+(canTransfer&&record.status==='pending'?'<button class="button primary" data-transfer="'+escapeHtml(record.id)+'">Marcar realizada</button>':'')+'</div></div><details class="transfer-details"><summary>Detalles del registro</summary><p>'+escapeHtml(periodLabel(record.period))+' · Versión '+record.revision+'</p><p>Guardado por '+escapeHtml(record.savedBy)+' · '+dateLabel(record.savedAt)+'</p>'+(paid?'<p>Registrada por '+escapeHtml(record.transferredBy)+' · '+dateLabel(record.transferredAt)+(record.reference?'<br>Ref.: '+escapeHtml(record.reference):'')+'</p>':'')+'</details></article>';
 }
 function renderBoard(){
  const period=$('board-period').value,list=Object.values(drafts).filter(x=>!period||x.period===period);
@@ -70,14 +71,14 @@ $('payroll-form').addEventListener('submit',async event=>{
 document.querySelectorAll('.nav').forEach(button=>button.addEventListener('click',()=>navigate(button.dataset.view)));
 $('history-list').addEventListener('click',event=>{
  const open=event.target.closest('[data-open]');if(open){openRecord(open.dataset.open);return;}
- const button=event.target.closest('[data-transfer]');if(!button||!committee)return;
+ const button=event.target.closest('[data-transfer]');if(!button||!canTransfer)return;
  pendingTransfer=JSON.parse(JSON.stringify(drafts[button.dataset.transfer]));$('transfer-summary').textContent=pendingTransfer.snapshot.worker.name+' · '+periodLabel(pendingTransfer.period)+' · '+money(pendingTransfer.snapshot.result.transfer)+' · Versión '+pendingTransfer.revision;
  $('transfer-form').reset();$('transfer-error').hidden=true;$('transfer-dialog').showModal();
 });
 $('cancel-transfer').addEventListener('click',()=>$('transfer-dialog').close());
 $('transfer-form').addEventListener('submit',async event=>{
- event.preventDefault();if(!committee||!pendingTransfer)return;$('confirm-transfer').disabled=true;
- try{const response=await api('api/drafts/'+encodeURIComponent(pendingTransfer.id)+'/transfer',{expectedRevision:pendingTransfer.revision,reference:$('transfer-reference').value});drafts[response.draft.id]=response.draft;$('transfer-dialog').close();renderBoard();toast('Transferencia registrada. El borrador quedó bloqueado.');}
+ event.preventDefault();if(!canTransfer||!pendingTransfer)return;$('confirm-transfer').disabled=true;
+ try{const response=await api('api/drafts/'+encodeURIComponent(pendingTransfer.id)+'/transfer',{expectedRevision:pendingTransfer.revision,reference:$('transfer-reference').value});drafts[response.draft.id]=response.draft;if(viewRecord?.id===response.draft.id)loadRecord(response.draft);$('transfer-dialog').close();renderBoard();toast('Transferencia registrada. El borrador quedó bloqueado.');}
  catch(error){$('transfer-error').textContent=error.message;$('transfer-error').hidden=false;await refreshShared();}finally{$('confirm-transfer').disabled=false;}
 });
 $('backup').addEventListener('click',()=>downloadBlob(new Blob([JSON.stringify({format:'nomina-compartida-v2',drafts},null,2)],{type:'application/json'}),'nomina-respaldo-'+new Date().toISOString().slice(0,10)+'.json'));

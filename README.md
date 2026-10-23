@@ -26,7 +26,7 @@ La versión para Vercel requiere autenticación en el servidor. La sesión no ti
 
 `config/payroll.enc.json` contiene la configuración de los 18 trabajadores cifrada con AES-256-GCM. La clave de descifrado y las credenciales no forman parte del repositorio. El build escribe los datos en `private-dist/`, fuera de la carpeta pública. Una función autenticada entrega los recursos. Los datos y la contraseña nunca deben copiarse a `public/` ni a variables públicas.
 
-Los borradores se sincronizan entre los dos perfiles mediante PostgreSQL (Neon). La aplicación registra transferencias declaradas por el comité; no ejecuta transferencias bancarias ni emite boletas ante el SII.
+Los borradores se sincronizan entre los dos perfiles mediante PostgreSQL (Neon). La aplicación registra transferencias declaradas por administración o el comité; no ejecuta transferencias bancarias ni emite boletas ante el SII.
 
 ## Cálculo
 
@@ -66,7 +66,7 @@ El límite de intentos del código es por instancia. Para un límite global, con
 
 - Administración crea y actualiza borradores sin transferencia registrada.
 - El comité revisa borradores y descarga el PDF con los datos guardados. No modifica asistencia, ausencias, anticipos ni otros importes.
-- El comité marca una transferencia realizada mediante confirmación, con una referencia opcional. Se conservan usuario, fecha, monto y un hash de la versión revisada.
+- Administración y el comité pueden marcar una transferencia realizada mediante confirmación, con una referencia opcional. Se conservan usuario, fecha, monto y un hash de la versión revisada.
 - El tablero separa Datos pendientes, Por transferir y Transferidas; muestra el total registrado del período.
 - Un borrador marcado como transferido queda bloqueado para edición. No se implementa reversión de marcas.
 - La versión del registro se comprueba atómicamente en cada escritura para rechazar cambios simultáneos. Repetir una confirmación no duplica el registro ni altera su referencia.

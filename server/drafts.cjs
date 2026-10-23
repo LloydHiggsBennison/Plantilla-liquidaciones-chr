@@ -19,7 +19,7 @@ class DraftService{
   const saved=await this.store.compareAndSet(record,expected);if(!saved)throw new StoreError(409,'Otro usuario actualizó este borrador. Recarga el tablero.');return saved;
  }
  async markTransferred(id,input,identity){
-  if(identity.role!=='committee')throw new StoreError(403,'Solo el comité puede marcar transferencias realizadas.');
+  if(!['admin','committee'].includes(identity.role))throw new StoreError(403,'Solo administración y comité pueden registrar transferencias.');
   const expected=revision(input.expectedRevision),current=await this.store.get(id);if(!current)throw new StoreError(404,'No se encontró el borrador.');
   if(current.status==='transferred')return current;
   if(current.revision!==expected)throw new StoreError(409,'El monto o los datos cambiaron. Revisa nuevamente el borrador antes de marcarlo.');

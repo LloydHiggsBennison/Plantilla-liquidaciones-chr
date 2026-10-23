@@ -63,7 +63,7 @@ async function handler(req,res,assetRoot,dependencies={}){
     if(!sameOrigin(req)||!auth.validCsrf(req.headers['x-csrf-token'])||!auth.equal(req.headers['x-csrf-token'],auth.csrfCookie(req)))return json(403,{error:'Solicitud no permitida.'});
     try{input=await readJson(req,['api/attendance','api/attendance/preview'].includes(resource)?3*1024*1024:resource==='api/attendance/apply'?128*1024:8192);}catch{return json(400,{error:'Datos de solicitud inválidos o archivo demasiado grande.'});}
     if(resource==='api/drafts'&&identity.role!=='admin')return json(403,{error:'El comité no puede editar los borradores.'});
-    if(resource.endsWith('/transfer')&&identity.role!=='committee')return json(403,{error:'Solo el comité puede registrar transferencias.'});
+    if(resource.endsWith('/transfer')&&!['admin','committee'].includes(identity.role))return json(403,{error:'Solo administración y comité pueden registrar transferencias.'});
    }
    if(resource==='api/attendance/apply'&&req.method==='POST')return json(200,await require('../server/attendance-sync.cjs').apply(input,draftService(),identity));
    if(['api/attendance','api/attendance/preview'].includes(resource)&&['GET','POST'].includes(req.method)){
