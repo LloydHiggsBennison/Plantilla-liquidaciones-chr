@@ -1,4 +1,4 @@
-# Nómina Simple
+# Condominio Horizonte de Reñaca
 
 Aplicación estática para calcular liquidaciones de sueldo a partir de un selector de trabajador, días de asistencia, ausencias sin goce y anticipos. Exporta el detalle y el total a transferir en PDF A4.
 
