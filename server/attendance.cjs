@@ -68,6 +68,8 @@ function analyze(sheets,period,workers){
    (sourceDates[sheet.name]??=new Set()).add(date);const observation=String(row.cells[name==='TURNOS'?11:name==='NOCHEROS'?7:10]?.value||'');
    const source={sheet:sheet.name,date,row:row.index};const cols=name==='ASEO'?[3,4,5,6,7,8,9]:name==='NOCHEROS'?[4,5]:[5,6,7,8,9,10];const absent=[],rowWorked=new Set();
    for(const col of cols){const cell=row.cells[col];if(!cell)continue;const value=String(cell.value||'').trim();if(!value)continue;
+    // Former employee: keep historical source cells, but do not import this column.
+    if(['L RETAMALES','RETAMALES'].includes(norm(name==='ASEO'?header[col]?.value:value)))continue;
     const w=one(name==='ASEO'?header[col]?.value:value,sheet.name);const ref={...source,cell:cell.ref};
     if(['LIBRE','APOYO','PV 16 24'].includes(norm(value))){if(name==='TURNOS'&&col===10&&['APOYO','PV 16 24'].includes(norm(value))){const support=byName('Cristian Allendes');if(support)record(support,'worked',{...ref,text:value});}continue;}
     if(!w){if(!/^M ALCAINO$/.test(norm(value)))issue('Nombre sin correspondencia: '+(name==='ASEO'?header[col]?.value:value),ref);continue;}

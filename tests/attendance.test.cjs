@@ -41,6 +41,10 @@ test('ASEO requiere dos nombres: Sergio ausente no genera reemplazo; Gloria por 
 test('un encabezado ambiguo en ASEO no se asigna al nochero Luis',()=>{
  const r=run([],[{name:'ASEO',rows:[{index:2,cells:{7:c('L.ALCAÍNO')}},{index:3,cells:{1:c('2026-10-25'),7:c('ABCDEFGHI')}}]}]);assert.equal(person(r,'Luis Alcaino').worked,0);assert(r.issues.some(x=>x.message.includes('L.ALCAÍNO')));
 });
+test('L. Retamales está excluido aunque su columna histórica tenga asignaciones',()=>{
+ const r=run([],[{name:'ASEO',rows:[{index:2,cells:{9:c('L.RETAMALES'),6:c('S.CUELLO')}},{index:3,cells:{1:c('2026-10-25'),9:c('ABCDEFGHI','FF0000'),6:c('ABC')}}]}]);
+ assert.equal(person(r,'Sergio Cuello').worked,1);assert(!r.issues.some(x=>x.message.includes('RETAMALES')));assert(!r.summaries.some(x=>x.name.includes('Retamales')));
+});
 test('lector XLSX conserva fechas, colores y columnas originales',async()=>{
  const ExcelJS=require('exceljs'),wb=new ExcelJS.Workbook(),s=wb.addWorksheet('Turnos');s.getCell('B3').value=new Date('2026-10-16T00:00:00Z');s.getCell('F3').value='A.VILLEGAS';s.getCell('F3').fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFF0000'}};
  const sheets=await fromXlsx(Buffer.from(await wb.xlsx.writeBuffer()));const r=analyze(sheets,'2026-10',workers);const a=person(r,'Angel Villegas');assert.equal(a.absent,1);assert.equal(a.events[0].cell,'F3');
