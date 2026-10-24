@@ -12,6 +12,10 @@ test('fechas mensuales, colores y nombres repetidos cuentan fechas únicas',()=>
 test('PV solo identifica lugar; no agrega horas ni un segundo día a Cristian',()=>{
  const r=run([turn(1,{9:c('C.ALLENDES'),10:c('PV 16-24')})]);const s=person(r,'Cristian Allendes');assert.equal(s.worked,1);assert.equal(s.overtimeHours,0);assert.equal(s.replacementDays,0);
 });
+
+test('las asignaciones APOYO y PV respetan los colores de ausencia y vacaciones de Cristian',()=>{
+ const r=run([turn(1,{10:c('APOYO','FF0000')}),turn(2,{10:c('PV 16-24','F9CB9C')}),turn(3,{10:c('APOYO','FFFF00')})]);const s=person(r,'Cristian Allendes');assert.equal(s.worked,1);assert.equal(s.absent,1);assert.equal(s.vacation,1);assert.equal(s.overtimeHours,0);
+});
 test('CORTES y DIAZ se reconocen; sus dos columnas cuentan una fecha sin bloquear la importación',()=>{
  const roster=workers.map(w=>({...w,salaryBasis:w.name==='Jose Cortes'?'day':'month'}));
  const r=analyze([{name:'Turnos',rows:[turn(3,{5:c('CORTES'),6:c('CORTES'),7:c('DIAZ'),8:c('DIAZ')})]}],'2026-10',roster);
@@ -23,6 +27,16 @@ test('Juan Ponce usa lunes a viernes como referencia sin duplicar registros expl
  assert.equal(juan.worked,22);assert(juan.scheduleReference);assert(juan.events.every(e=>![0,6].includes(new Date(e.date+'T00:00:00Z').getUTCDay())));
  const explicit=analyze([{name:'Turnos',rows:[turn(1,{5:c('Juan Ponce','FF0000')})]}],'2026-10',roster);assert.equal(person(explicit,'Juan Ponce').absent,1);assert.equal(person(explicit,'Juan Ponce').worked,0);
  const empty=analyze([],'2026-10',roster);assert.equal(person(empty,'Juan Ponce').worked,0);
+});
+
+test('12 de octubre: Manuel Guajardo está de vacaciones y Díaz lo reemplaza aunque la celda esté blanca',()=>{
+ const roster=[...workers,{id:'guajardo',name:'Manuel Araya Guajardo',role:'Conserje'}],rows=[turn(12,{5:c('M.ARAYA G.')},'DÍAZ POR M.ARAYA G')];
+ const r=analyze([{name:'Turnos',rows}],'2026-10',roster),manuel=person(r,'Manuel Araya Guajardo');assert.equal(manuel.worked,0);assert.equal(manuel.vacation,1);assert(manuel.events[0].confirmation);assert.equal(person(r,'Victor Diaz').replacementDays,1);assert.equal(r.summaries.flatMap(x=>x.issues).length,0);
+ const noReplacement=analyze([{name:'Turnos',rows:[turn(12,{5:c('M.ARAYA G.')})]}],'2026-10',roster);assert.equal(person(noReplacement,'Manuel Araya Guajardo').worked,1);assert.equal(person(noReplacement,'Manuel Araya Guajardo').vacation,0);
+});
+
+test('una nota de reemplazo incompatible con asistencia trabajada requiere corregir ambos registros',()=>{
+ const r=run([turn(20,{5:c('J.CORTÉS'),6:c('A.VILLEGAS')},'CORTES POR A.VILLEGAS')]);assert.equal(person(r,'Jose Cortes').replacementDays,0);assert.equal(person(r,'Jose Cortes').issues.length,1);assert.equal(person(r,'Angel Villegas').issues.length,1);assert.equal(person(r,'Angel Villegas').worked,1);
 });
 test('un reemplazante externo que cubre solo recibe un día completo',()=>{
  const r=run([turn(8,{6:c('A.VILLEGAS','FF0000'),7:c('M.ARAYA A.')},'M.ARAYA A. POR A.VILLEGAS')]);assert.equal(person(r,'Angel Villegas').absent,1);assert.equal(person(r,'Manuel Araya Aparicio').replacementDays,1);assert.equal(person(r,'Manuel Araya Aparicio').overtimeHours,0);

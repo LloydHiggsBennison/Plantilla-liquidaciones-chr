@@ -71,7 +71,13 @@ function analyze(sheets,period,workers){
     // Former employee: keep historical source cells, but do not import this column.
     if(['L RETAMALES','RETAMALES'].includes(norm(name==='ASEO'?header[col]?.value:value)))continue;
     const w=one(name==='ASEO'?header[col]?.value:value,sheet.name);const ref={...source,cell:cell.ref};
-    if(['LIBRE','APOYO','PV 16 24'].includes(norm(value))){if(name==='TURNOS'&&col===10&&['APOYO','PV 16 24'].includes(norm(value))){const support=byName('Cristian Allendes');if(support)record(support,'worked',{...ref,text:value});}continue;}
+    if(['LIBRE','APOYO','PV 16 24'].includes(norm(value))){
+     if(name==='TURNOS'&&col===10&&['APOYO','PV 16 24'].includes(norm(value))){
+      const support=byName('Cristian Allendes'),kind=colorKind(cell.color);
+      if(support){if(kind==='unknown')issue('Color no definido: '+cell.color,ref,[support.id]);else record(support,kind,{...ref,text:value});}
+     }
+     continue;
+    }
     if(!w){if(!/^M ALCAINO$/.test(norm(value)))issue('Nombre sin correspondencia: '+(name==='ASEO'?header[col]?.value:value),ref);continue;}
     let kind=colorKind(cell.color);if(norm(value)==='VAC')kind='vacation';
     if(norm(value)==='LM'){issue('Licencia médica: requiere revisar el tratamiento del período.',ref,[w.id]);continue;}
@@ -114,6 +120,12 @@ function analyze(sheets,period,workers){
    }
   }
  }
+ // Confirmed vacation: the assignment cell is white, but Díaz covered this date.
+ for(const e of replacements.values()){
+  if(e.date!=='2026-10-12'||norm(e.sheet)!=='TURNOS'||e.missing!==byName('Manuel Araya Guajardo')?.id||e.replacer!==byName('Victor Diaz')?.id)continue;
+  const key=e.missing+'|'+e.date,original=days.get(key);
+  if(original?.kind==='worked')days.set(key,{...original,kind:'vacation',confirmation:'Vacaciones confirmadas por administración; reemplazo por Víctor Díaz.'});
+ }
  // Maintenance has a habitual schedule rather than an assignment column.
  const maintenance=byName('Juan Ponce');
  if(maintenance&&Object.values(sourceDates).some(d=>d.size)&&![...days.values()].some(e=>e.worker===maintenance.id)){
@@ -146,6 +158,9 @@ function analyze(sheets,period,workers){
   if(e.kind==='post-coverage'){s.overtimeHours+=4;s.events.push({...e,credit:'overtimeHours',amount:4});continue;}
   if(norm(e.sheet)==='ASEO'&&aseoExtras.has(e.date+'|'+e.replacer))continue;
   if(e.kind==='internal'){issue('Cambio interno: confirmar si genera un adicional.',e,[e.replacer]);continue;}
+  if(days.get(e.missing+'|'+e.date)?.kind==='worked'){
+   issue('El trabajador reemplazado figura como trabajado ese día. Corrige la asistencia o la observación de reemplazo.',e,[e.missing,e.replacer]);continue;
+  }
   if(e.date==='2026-10-16'&&norm(s.name)==='CRISTIAN ALLENDES'){s.events.push({...e,credit:'Sin adicional: excepción confirmada'});continue;}
   if(special.has(e.replacer)&&special.has(e.missing)){
    if(!sharedHandled.has(e.date+'|'+e.missing))issue('Revisar quiénes cubrieron el turno compartido.',e,[e.replacer]);
