@@ -19,6 +19,7 @@
   if(!w||!rules){r.pending.push('Falta la configuración del trabajador o las reglas de cálculo.');return r;}
   const dailyRate=w.salaryBasis==='day'?w.dailyRate:w.base/30;
   if((r.replacementDays||r.overtimeHours||r.aseoExtraDays)&&(!Number.isFinite(dailyRate)||dailyRate<0))r.pending.push('Falta la tarifa diaria del trabajador.');
+  r.extraDays=r.replacementDays+r.aseoExtraDays;
   r.replacementPay=round(dailyRate*r.replacementDays)||0;r.overtimePay=round(dailyRate*r.overtimeHours/8)||0;
   r.aseoExtraPay=round(dailyRate*r.aseoExtraDays*1.5)||0;
   r.vacationPay=w.salaryBasis==='day'?(round(dailyRate*r.vacation)||0):0;

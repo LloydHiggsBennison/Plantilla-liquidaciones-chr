@@ -96,7 +96,12 @@ function analyze(sheets,period,workers){
     else if(name==='ASEO'&&/VACACIONES/.test(clean)){
      // ASEO uses "Juan vacaciones / Gloria" across two slash-separated pieces.
      continue;
-    }else if(/CUBRE AMBAS/.test(clean)&&found.length===1){replacer=found[0];missing=roster.find(w=>absent.includes(w.id));}
+    }else if(/CUBRE AMBAS/.test(clean)&&found.length===1){
+     if(name==='NOCHEROS'&&date==='2026-10-14'&&norm(found[0].name)==='LUIS ALCAINO'){
+      replacements.set(date+'|'+found[0].id+'|post-coverage',{replacer:found[0].id,missing:null,...source,observation:segment,kind:'post-coverage'});continue;
+     }
+     replacer=found[0];missing=roster.find(w=>absent.includes(w.id));
+    }
     if(!replacer||!missing){if(name==='ASEO')continue;if(found.length===1&&absent.includes(found[0].id)&&pair.length===1)continue;if(/M ALCAINO/.test(clean)&&replacer){const key=date+'|'+replacer.id+'|MARIA';if(!replacements.has(key)){replacements.set(key,{replacer:replacer.id,missing:null,...source,observation:segment,kind:'honorarios-day'});record(replacer,'worked',{...source,cell:'G'+row.index,text:segment});}continue;}issue('Reemplazo pendiente de interpretar: '+segment,source,found.map(w=>w.id));continue;}
     const key=date+'|'+replacer.id+'|'+missing.id;if(replacements.has(key))continue;
     replacements.set(key,{replacer:replacer.id,missing:missing.id,...source,observation:segment,kind:/CAMBIO INTERNO/.test(clean)?'internal':'replacement'});
@@ -138,6 +143,7 @@ function analyze(sheets,period,workers){
  const fullSpecialDays=new Set();
  for(const e of replacements.values()){
   const s=summaries.get(e.replacer);if(e.kind==='honorarios-day'){s.events.push(e);continue;}
+  if(e.kind==='post-coverage'){s.overtimeHours+=4;s.events.push({...e,credit:'overtimeHours',amount:4});continue;}
   if(norm(e.sheet)==='ASEO'&&aseoExtras.has(e.date+'|'+e.replacer))continue;
   if(e.kind==='internal'){issue('Cambio interno: confirmar si genera un adicional.',e,[e.replacer]);continue;}
   if(e.date==='2026-10-16'&&norm(s.name)==='CRISTIAN ALLENDES'){s.events.push({...e,credit:'Sin adicional: excepción confirmada'});continue;}
