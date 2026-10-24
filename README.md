@@ -30,7 +30,7 @@ Los borradores se sincronizan entre los dos perfiles mediante PostgreSQL (Neon).
 
 ## Cálculo
 
-- Con una o más ausencias sin goce, el bono de asistencia se elimina completo.
+- El bono de asistencia se rebaja proporcionalmente por ausencia con base de 30 días, igual que los demás haberes mensuales.
 - El sueldo mensual y los bonos imponibles fijos se ajustan proporcionalmente, con divisor 30.
 - La colación y movilización mensuales se rebajan por ausencia con divisor 30, redondeando cada asignación al peso. Las tarifas diarias se multiplican por la asistencia efectiva.
 - Se recalculan AFP, salud, cesantía, APV e impuesto único según el perfil y el período.
@@ -40,7 +40,7 @@ Los borradores se sincronizan entre los dos perfiles mediante PostgreSQL (Neon).
 
 Solo se cargaron parámetros oficiales contrastados para septiembre y octubre de 2026. Los períodos sin parámetros no muestran un total final. Actualizar las tablas mensuales y los datos personales cuando cambien. No se incluyen horas extras ni reemplazos no registrados.
 
-Ver [reglas, redondeos y fuentes oficiales](docs/calculo.md). Las pruebas incluyen inasistencias, eliminación de bonos, pagos diarios, exenciones, APV, tramos de impuesto, topes, anticipos y honorarios.
+Ver [reglas, redondeos y fuentes oficiales](docs/calculo.md). Las pruebas incluyen inasistencias, prorrateo de bonos, pagos diarios, exenciones, APV, tramos de impuesto, topes, anticipos y honorarios.
 
 ## Desplegar en Vercel
 

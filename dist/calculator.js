@@ -57,7 +57,7 @@
    if(a.basis==='day'){amount=round(a.amount*(r.worked+r.replacementDays));note='Tarifa diaria × '+(r.worked+r.replacementDays)+' días y reemplazos';}
    else if(a.basis!=='month'){r.pending.push('Falta la regla de pago de '+a.label+'.');continue;}
    else if(a.label==='Bono asistencia'){
-    if(r.absent>0){amount=0;r.attendanceBonusLoss+=a.amount;note='No se paga por registrar inasistencia';r.adjustments.push({label:'Bono de asistencia no devengado',amount:a.amount});}
+    if(r.absent>0){amount=round(a.amount*fraction);const discount=a.amount-amount;r.attendanceBonusLoss+=discount;note='Proporcional a los días sin goce';r.adjustments.push({label:'Bono asistencia: descuento proporcional',amount:discount});}
    }else if(a.taxable&&r.absent>0){
     if(rules.fixedBonusAbsencePolicy==='prorate'){const discount=a.amount-round(a.amount*fraction);amount=a.amount-discount;r.fixedBonusesDiscount+=discount;note='Proporcional a los días sin goce';r.adjustments.push({label:a.label+': descuento proporcional',amount:discount});}
     else if(rules.fixedBonusAbsencePolicy!=='fixed')r.pending.push('Falta definir el descuento por ausencia de '+a.label+'.');

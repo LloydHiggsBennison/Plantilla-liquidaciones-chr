@@ -10,7 +10,7 @@ async function fixture(fn){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'chr
 test('previsualiza sin guardar; aplicar conserva anticipos y recalcula sueldo y cotizaciones',async()=>fixture(async service=>{
  const old=await service.store.get('demo_2026-10'),preview=await sync.preview(report(),service,admin,'excel',env);
  assert.equal((await service.store.get(old.id)).revision,1);assert.equal(preview.rows[0].state,'changed');assert.equal(preview.rows[0].input.advance,40000);assert.deepEqual(preview.rows[0].changes.map(x=>x.field),['worked','absent']);assert(preview.rows[0].nextAmount<old.snapshot.result.transfer);
- const applied=await sync.apply({token:preview.token,workers:['demo']},service,admin,env);assert.equal(applied.results[0].state,'updated');const saved=await service.store.get(old.id);assert.equal(saved.revision,2);assert.equal(saved.data.advance,40000);assert.equal(saved.data.absent,1);assert(saved.sourceSync.previewId);assert.equal(saved.snapshot.result.attendanceBonusLoss,30000);
+ const applied=await sync.apply({token:preview.token,workers:['demo']},service,admin,env);assert.equal(applied.results[0].state,'updated');const saved=await service.store.get(old.id);assert.equal(saved.revision,2);assert.equal(saved.data.advance,40000);assert.equal(saved.data.absent,1);assert(saved.sourceSync.previewId);assert.equal(saved.snapshot.result.attendanceBonusLoss,1000);
  const again=await sync.apply({token:preview.token,workers:['demo']},service,admin,env);assert.equal(again.results[0].state,'already-applied');assert.equal((await service.store.get(old.id)).revision,2);
 }));
 test('rechaza revisión alterada, selección ajena, otro usuario y revisión vencida',async()=>fixture(async service=>{
