@@ -44,3 +44,11 @@ test('la actualización guarda el recargo ASEO, conserva anticipos y no lo repit
  const response=await sync.apply({token:p.token,workers:['demo']},service,admin,env);assert.equal(response.results[0].state,'updated');const saved=await service.store.get('demo_2026-10');assert.equal(saved.data.advance,40000);assert.equal(saved.data.aseoExtraDays,2);assert.equal(saved.snapshot.result.aseoExtraPay,90000);
  const again=await sync.preview(source,service,admin,'google',env);assert.equal(again.rows[0].state,'unchanged');
 }));
+
+test('actualizar HHEE conserva asistencia manual y anticipo y no suma otros adicionales',async()=>fixture(async service=>{
+ await service.save({...data,replacementDays:2,overtimeHours:4,expectedRevision:1},admin);
+ const source=report({worked:22,absent:0,scheduleReference:'Horario habitual',sheetExtrasActive:1,sheetExtraDays:1,sheetExtraHours:12,sheetExtraPay:55355,replacementDays:0,overtimeHours:0});
+ const p=await sync.preview(source,service,admin,'google',env);assert.equal(p.rows[0].state,'changed');assert.equal(p.rows[0].input.worked,20);assert.equal(p.rows[0].input.advance,40000);
+ await sync.apply({token:p.token,workers:['demo']},service,admin,env);const saved=await service.store.get('demo_2026-10');assert.equal(saved.data.sheetExtraPay,55355);assert.equal(saved.data.sheetExtraHours,12);assert.equal(saved.data.replacementDays,0);assert.equal(saved.data.overtimeHours,0);assert.equal(saved.data.advance,40000);assert.equal(saved.snapshot.result.sheetOvertimePay,55355);
+ const missing=await sync.preview(report({worked:20,absent:0}),service,admin,'google',env);assert.equal(missing.rows[0].input.sheetExtraPay,55355);assert.equal(missing.rows[0].input.replacementDays,0);assert.equal(missing.rows[0].state,'unchanged');
+}));

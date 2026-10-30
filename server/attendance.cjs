@@ -4,7 +4,7 @@ const norm=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,
 const knownAliases={
  'Luis Alcaino':['L ALCAINO','LUIS ALCAINO'], 'Alexis Bernal':['A BERNAL','ALEXIS BERNAL'],
  'Antonio Ariza':['A ARIZA','ARIZA'], 'Eduardo Bernal':['E BERNAL','EDUARDO BERNAL'],
- 'Manuel Araya Guajardo':['M ARAYA G','MANUEL ARAYA GUAJARDO'], 'Manuel Araya Aparicio':['M ARAYA A','MANUEL ARAYA APARICIO'],
+ 'Manuel Araya Guajardo':['M ARAYA G','MANUEL ARAYA G','MANUEL ARAYA GUAJARDO'], 'Manuel Araya Aparicio':['M ARAYA A','MANUEL ARAYA A','MANUEL ARAYA APARICIO'],
  'Angel Villegas':['A VILLEGAS','VILLEGAS'], 'Luis San Martin':['L SAN MARTIN','SAN MARTIN'],
  'Jose Cortes':['J CORTES','CORTES'], 'Victor Diaz':['V DIAZ','DIAZ'],
  'Eduardo de la Prida':['E DE LA PRIDA','DE LA PRIDA'], 'Cristian Allendes':['C ALLENDES','ALLENDES'],
@@ -30,7 +30,7 @@ function textValue(value){if(value==null)return '';if(typeof value==='object'){i
 async function fromXlsx(buffer){
  if(buffer.length>2*1024*1024)throw Error('La planilla debe pesar menos de 2 MB.');
  const ExcelJS=require('exceljs'),wb=new ExcelJS.Workbook();await wb.xlsx.load(buffer);const sheets=[];
- for(const sheet of wb.worksheets){if(!['TURNOS','NOCHEROS','ASEO'].includes(norm(sheet.name)))continue;
+ for(const sheet of wb.worksheets){if(!['TURNOS','NOCHEROS','ASEO','HORAS EXTRAS TRABAJADORES'].includes(norm(sheet.name)))continue;
   if(sheet.rowCount>3000||sheet.columnCount>100)throw Error('La planilla supera el tamaño de lectura permitido.');
   const rows=[];sheet.eachRow({includeEmpty:false},(row,index)=>{const cells={};row.eachCell({includeEmpty:true},(cell,col)=>{
    const fill=cell.fill?.fgColor?.argb||'FFFFFF';cells[col]={value:cell.value instanceof Date?cell.value:textValue(cell.value),color:fill,ref:cell.address,note:typeof cell.note==='string'?cell.note:''};
@@ -46,8 +46,10 @@ async function fromGoogle(env=process.env,fetcher=fetch){
  const assertion=body+'.'+crypto.sign('RSA-SHA256',Buffer.from(body),key).toString('base64url');
  const tokenResponse=await fetcher('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion}),signal:AbortSignal.timeout(15000)});
  if(!tokenResponse.ok)throw Error('No se pudo autenticar la cuenta de servicio de Google.');const token=await tokenResponse.json();
+ const metadata=await fetcher(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}?fields=sheets(properties(title))`,{headers:{Authorization:'Bearer '+token.access_token},signal:AbortSignal.timeout(15000)});
+ if(!metadata.ok)throw Error('No se pudieron consultar las hojas de Google Sheets.');const titles=(await metadata.json()).sheets.map(s=>s.properties.title);
  const query=new URLSearchParams({includeGridData:'true',fields:'sheets(properties(title),data(startRow,startColumn,rowData(values(effectiveValue,formattedValue,effectiveFormat(backgroundColor),note))))'});
- for(const name of ['Turnos','Nocheros','ASEO'])query.append('ranges',`'${name}'!A1:K3000`);
+ for(const name of ['Turnos','Nocheros','ASEO',...titles.filter(t=>norm(t)==='HORAS EXTRAS TRABAJADORES')])query.append('ranges',`'${name.replace(/'/g,"''")}'!A1:K3000`);
  const response=await fetcher(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}?${query}`,{headers:{Authorization:'Bearer '+token.access_token},signal:AbortSignal.timeout(20000)});
  if(!response.ok)throw Error('Google no permitió leer la planilla. Comparte el documento como lector con la cuenta de servicio y verifica los nombres de las hojas.');
  const data=await response.json();return data.sheets.map(s=>({name:s.properties.title,rows:s.data.flatMap(g=>(g.rowData||[]).map((r,i)=>({index:(g.startRow||0)+i+1,cells:Object.fromEntries((r.values||[]).map((c,j)=>{const col=(g.startColumn||0)+j+1;return [col,{value:c.effectiveValue?.numberValue??c.formattedValue??c.effectiveValue?.stringValue??'',color:rgbColor(c.effectiveFormat?.backgroundColor),ref:String.fromCharCode(64+col)+((g.startRow||0)+i+1),note:c.note||''}];}))})))}));
@@ -58,9 +60,13 @@ function analyze(sheets,period,workers){
  const byName=name=>roster.find(w=>norm(w.name)===norm(name));
  function matches(value,sheet){const t=' '+norm(value)+' ';return roster.filter(w=>w.aliases.some(a=>t.includes(' '+a+' ')));}
  function one(value,sheet){const found=matches(value,sheet);return found.length===1?found[0]:null;}
+ const sheetExtras=require('./sheet-extras.cjs').parse(sheets,period,value=>one(value,'Horas Extras Trabajadores'));
  const summaries=new Map(roster.map(w=>[w.id,{worker:w.id,name:w.name,role:w.role,worked:0,absent:0,vacation:0,replacementDays:0,overtimeHours:0,aseoExtraDays:0,issues:[],events:[]}]));
  const issues=[],days=new Map(),replacements=new Map(),sourceDates={},aseoExtras=new Map();
- function issue(message,source,ids=[]){const item={message,...source};issues.push(item);for(const id of ids)if(summaries.has(id))summaries.get(id).issues.push(item);}
+ function issue(message,source,ids=[],category='attendance'){
+  if(category==='extras'&&ids.length){ids=ids.filter(id=>!sheetExtras.records.has(id));if(!ids.length)return;}
+  const item={message,...source};issues.push(item);for(const id of ids)if(summaries.has(id))summaries.get(id).issues.push(item);
+ }
  function record(w,kind,source){const key=w.id+'|'+source.date;const old=days.get(key);if(old&&old.kind!==kind){if(kind==='worked')return;if(old.kind!=='worked'){issue('Estados incompatibles para la misma fecha.',source,[w.id]);return;}}if(!old||kind!=='worked')days.set(key,{worker:w.id,kind,...source});}
  const special=new Set(['Angel Villegas','Luis San Martin','Eduardo de la Prida'].map(n=>byName(n)?.id).filter(Boolean));
  for(const sheet of sheets){const name=norm(sheet.name);if(!['TURNOS','NOCHEROS','ASEO'].includes(name))continue;const header=sheet.rows.find(r=>r.index===2)?.cells||{};
@@ -108,14 +114,14 @@ function analyze(sheets,period,workers){
      }
      replacer=found[0];missing=roster.find(w=>absent.includes(w.id));
     }
-    if(!replacer||!missing){if(name==='ASEO')continue;if(found.length===1&&absent.includes(found[0].id)&&pair.length===1)continue;if(/M ALCAINO/.test(clean)&&replacer){const key=date+'|'+replacer.id+'|MARIA';if(!replacements.has(key)){replacements.set(key,{replacer:replacer.id,missing:null,...source,observation:segment,kind:'honorarios-day'});record(replacer,'worked',{...source,cell:'G'+row.index,text:segment});}continue;}issue('Reemplazo pendiente de interpretar: '+segment,source,found.map(w=>w.id));continue;}
+    if(!replacer||!missing){if(name==='ASEO')continue;if(found.length===1&&absent.includes(found[0].id)&&pair.length===1)continue;if(/M ALCAINO/.test(clean)&&replacer){const key=date+'|'+replacer.id+'|MARIA';if(!replacements.has(key)){replacements.set(key,{replacer:replacer.id,missing:null,...source,observation:segment,kind:'honorarios-day'});record(replacer,'worked',{...source,cell:'G'+row.index,text:segment});}continue;}issue('Reemplazo pendiente de interpretar: '+segment,source,found.map(w=>w.id),'extras');continue;}
     const key=date+'|'+replacer.id+'|'+missing.id;if(replacements.has(key))continue;
     replacements.set(key,{replacer:replacer.id,missing:missing.id,...source,observation:segment,kind:/CAMBIO INTERNO/.test(clean)?'internal':'replacement'});
    }
    if(name==='ASEO'){
     const parts=observation.split('/');if(parts.length===2){let missing=one(parts[0],sheet.name),replacer=one(parts[1],sheet.name);
      if(!missing&&/\bJUAN\b/.test(norm(parts[0])))missing=byName('Juan Vergara');
-     if(missing&&replacer){const key=date+'|'+replacer.id+'|'+missing.id;replacements.set(key,{replacer:replacer.id,missing:missing.id,...source,observation,kind:'replacement'});}else issue('Los dos nombres del reemplazo requieren revisión: '+observation,source);
+     if(missing&&replacer){const key=date+'|'+replacer.id+'|'+missing.id;replacements.set(key,{replacer:replacer.id,missing:missing.id,...source,observation,kind:'replacement'});}else issue('Los dos nombres del reemplazo requieren revisión: '+observation,source,[missing?.id,replacer?.id].filter(Boolean),'extras');
     }
    }
   }
@@ -147,7 +153,7 @@ function analyze(sheets,period,workers){
   if(!uncovered.length)continue;
   const present=[...days.values()].filter(e=>e.date===date&&special.has(e.worker)&&e.kind==='worked');
   const type=uncovered.length===1&&present.length===2?'overtimeHours':uncovered.length===2&&present.length===1?'replacementDays':null;
-  if(!type){issue('Cobertura del turno compartido pendiente de confirmar.',uncovered[0],[...uncovered,...present].map(e=>e.worker));continue;}
+  if(!type){issue('Cobertura del turno compartido pendiente de confirmar.',uncovered[0],[...uncovered,...present].map(e=>e.worker),'extras');continue;}
   const amount=type==='overtimeHours'?4:1;
   for(const e of present){const s=summaries.get(e.worker);s[type]+=amount;s.events.push({...e,credit:type,amount,observation:'Cobertura del turno compartido',missing:uncovered.map(x=>x.worker)});}
   for(const e of uncovered)sharedHandled.add(date+'|'+e.worker);
@@ -157,19 +163,28 @@ function analyze(sheets,period,workers){
   const s=summaries.get(e.replacer);if(e.kind==='honorarios-day'){s.events.push(e);continue;}
   if(e.kind==='post-coverage'){s.overtimeHours+=4;s.events.push({...e,credit:'overtimeHours',amount:4});continue;}
   if(norm(e.sheet)==='ASEO'&&aseoExtras.has(e.date+'|'+e.replacer))continue;
-  if(e.kind==='internal'){issue('Cambio interno: confirmar si genera un adicional.',e,[e.replacer]);continue;}
+  if(e.kind==='internal'){issue('Cambio interno: confirmar si genera un adicional.',e,[e.replacer],'extras');continue;}
   if(days.get(e.missing+'|'+e.date)?.kind==='worked'){
    issue('El trabajador reemplazado figura como trabajado ese día. Corrige la asistencia o la observación de reemplazo.',e,[e.missing,e.replacer]);continue;
   }
   if(e.date==='2026-10-16'&&norm(s.name)==='CRISTIAN ALLENDES'){s.events.push({...e,credit:'Sin adicional: excepción confirmada'});continue;}
   if(special.has(e.replacer)&&special.has(e.missing)){
-   if(!sharedHandled.has(e.date+'|'+e.missing))issue('Revisar quiénes cubrieron el turno compartido.',e,[e.replacer]);
+   if(!sharedHandled.has(e.date+'|'+e.missing))issue('Revisar quiénes cubrieron el turno compartido.',e,[e.replacer],'extras');
    continue;
   }
   if(special.has(e.missing)){const key=e.date+'|'+e.replacer;if(fullSpecialDays.has(key))continue;fullSpecialDays.add(key);}
   s.replacementDays++;s.events.push({...e,credit:'replacementDays',amount:1});
  }
  const required=['TURNOS','NOCHEROS','ASEO'];for(const name of required){const entry=Object.entries(sourceDates).find(([k])=>norm(k)===name);if(!entry)issue('No hay fechas del período en la hoja '+name+'.',{});}
+ if(sheetExtras.invalidLayout)for(const s of summaries.values())s.issues.push(...sheetExtras.issues);
+ for(const item of sheetExtras.issues)issues.push(item);
+ for(const [id,record]of sheetExtras.records){
+  const summary=summaries.get(id);summary.issues.push(...record.issues);summary.sheetExtrasActive=1;
+  summary.sheetExtraDays=record.dayCount;summary.sheetExtraHours=record.hours;summary.sheetExtraPay=record.pay;
+  summary.replacementDays=summary.overtimeHours=summary.aseoExtraDays=0;
+  summary.events=summary.events.filter(e=>!['replacementDays','overtimeHours','aseoExtraDays'].includes(e.credit));
+  summary.events.push(...record.events);
+ }
  return {period,source:'Google Sheets / Excel',readAt:new Date().toISOString(),summaries:[...summaries.values()],issues,coverage:Object.fromEntries(Object.entries(sourceDates).map(([k,v])=>[k,v.size]))};
 }
 module.exports={analyze,fromXlsx,fromGoogle,colorKind,excelDate,SOURCE_ID};

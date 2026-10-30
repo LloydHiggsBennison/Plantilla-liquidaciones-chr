@@ -8,12 +8,19 @@ test('Google usa cuenta de servicio de solo lectura y conserva colores, notas y 
  const sheets=await fromGoogle(env,async(url,options)=>{
   calls++;
   if(calls===1){assert.equal(url,'https://oauth2.googleapis.com/token');const assertion=options.body.get('assertion'),[head,body,signature]=assertion.split('.'),claims=JSON.parse(Buffer.from(body,'base64url'));assert.equal(claims.iss,env.GOOGLE_SERVICE_ACCOUNT_EMAIL);assert.equal(claims.scope,'https://www.googleapis.com/auth/spreadsheets.readonly');assert(crypto.verify('RSA-SHA256',Buffer.from(head+'.'+body),publicKey,Buffer.from(signature,'base64url')));return {ok:true,json:async()=>({access_token:'test-token'})};}
-  const request=new URL(url);assert(request.pathname.endsWith('/'+SOURCE_ID));assert.deepEqual(request.searchParams.getAll('ranges'),["'Turnos'!A1:K3000","'Nocheros'!A1:K3000","'ASEO'!A1:K3000"]);assert.equal(options.headers.Authorization,'Bearer test-token');
+  if(calls===2){assert(new URL(url).searchParams.get('fields').includes('title'));return {ok:true,json:async()=>({sheets:['Turnos','Nocheros','ASEO','Horas Extras Trabajadores'].map(title=>({properties:{title}}))})};}
+  const request=new URL(url);assert(request.pathname.endsWith('/'+SOURCE_ID));assert.deepEqual(request.searchParams.getAll('ranges'),["'Turnos'!A1:K3000","'Nocheros'!A1:K3000","'ASEO'!A1:K3000","'Horas Extras Trabajadores'!A1:K3000"]);assert.equal(options.headers.Authorization,'Bearer test-token');
   return {ok:true,json:async()=>({sheets:[{properties:{title:'Nocheros'},data:[{startRow:2,startColumn:1,rowData:[{values:[{effectiveValue:{numberValue:46318},formattedValue:'23/10/2026'},{effectiveValue:{stringValue:'L.ALCAINO'},effectiveFormat:{backgroundColor:{red:1}},note:'Ausente'}]}]}]}]})};
  });
- assert.equal(calls,2);assert.equal(sheets[0].rows[0].index,3);assert.equal(sheets[0].rows[0].cells[2].value,46318);assert.equal(sheets[0].rows[0].cells[3].color,'FF0000');assert.equal(sheets[0].rows[0].cells[3].note,'Ausente');assert.equal(sheets[0].rows[0].cells[3].ref,'C3');
+ assert.equal(calls,3);assert.equal(sheets[0].rows[0].index,3);assert.equal(sheets[0].rows[0].cells[2].value,46318);assert.equal(sheets[0].rows[0].cells[3].color,'FF0000');assert.equal(sheets[0].rows[0].cells[3].note,'Ausente');assert.equal(sheets[0].rows[0].cells[3].ref,'C3');
 });
 
 test('Google sin credenciales falla de forma explícita y no hace solicitudes',async()=>{
  await assert.rejects(()=>fromGoogle({},()=>{throw Error('No debe consultar');}),e=>e.status===503&&e.message.includes('cuenta de servicio'));
+});
+
+test('la lectura sigue funcionando en una planilla sin la hoja opcional de HHEE',async()=>{
+ const {privateKey}=crypto.generateKeyPairSync('rsa',{modulusLength:2048});let calls=0;
+ const env={GOOGLE_SERVICE_ACCOUNT_EMAIL:'reader@example.test',GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY:privateKey.export({type:'pkcs8',format:'pem'})};
+ const sheets=await fromGoogle(env,async(url)=>{calls++;if(calls===1)return {ok:true,json:async()=>({access_token:'test'})};if(calls===2)return {ok:true,json:async()=>({sheets:['Turnos','Nocheros','ASEO'].map(title=>({properties:{title}}))})};assert.equal(new URL(url).searchParams.getAll('ranges').length,3);return {ok:true,json:async()=>({sheets:[]})};});assert.equal(calls,3);assert.deepEqual(sheets,[]);
 });

@@ -1,7 +1,7 @@
 const crypto=require('node:crypto');
 const {StoreError}=require('./draft-store.cjs');
-const fields=['worked','absent','vacation','replacementDays','overtimeHours','aseoExtraDays'];
-const labels={worked:'Días base',absent:'Ausencias sin goce',vacation:'Vacaciones pagadas',replacementDays:'Días adicionales',overtimeHours:'Horas de cobertura',aseoExtraDays:'Jornadas extra ASEO con 50%'};
+const fields=['worked','absent','vacation','replacementDays','overtimeHours','aseoExtraDays','sheetExtrasActive','sheetExtraDays','sheetExtraHours','sheetExtraPay'];
+const labels={worked:'Días base',absent:'Ausencias sin goce',vacation:'Vacaciones pagadas',replacementDays:'Días adicionales',overtimeHours:'Horas de cobertura',aseoExtraDays:'Jornadas extra ASEO con 50%',sheetExtrasActive:'Horas extras desde planilla',sheetExtraDays:'Días con HHEE',sheetExtraHours:'Horas extras de planilla',sheetExtraPay:'Importe HHEE (CLP)'};
 function key(env){if(!env.AUTH_SESSION_SECRET)throw new StoreError(503,'Falta configurar el acceso privado.');return crypto.createHash('sha256').update('chr-attendance-preview-v1|'+env.AUTH_SESSION_SECRET).digest();}
 function seal(value,env){const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',key(env),iv);const data=Buffer.concat([cipher.update(JSON.stringify(value),'utf8'),cipher.final()]);return Buffer.concat([iv,cipher.getAuthTag(),data]).toString('base64url');}
 function unseal(token,env){
@@ -18,7 +18,15 @@ async function preview(report,service,identity,source='excel',env=process.env,no
   if(old?.status==='transferred'){row.state='transferred';row.nextAmount=row.currentAmount;row.message='Transferencia registrada: el borrador está bloqueado.';return row;}
   if(!w||summary.issues.length||!summary.events.length){row.message=summary.issues.length?'Revisa las observaciones de esta persona.':'Sin registros suficientes del período.';return row;}
   const input={worker:w.id,period:report.period,advance:old?.data?.advance??0};for(const field of fields)input[field]=Number(summary[field]||0);
-  if(summary.scheduleReference&&old){row.state='reference';row.message='Horario habitual de referencia. Se conservan las novedades ingresadas manualmente.';row.nextAmount=row.currentAmount;return row;}
+  if(!summary.sheetExtrasActive&&old?.data?.sheetExtrasActive){
+   for(const key of ['sheetExtrasActive','sheetExtraDays','sheetExtraHours','sheetExtraPay'])input[key]=Number(old.data[key]||0);
+   input.replacementDays=input.overtimeHours=input.aseoExtraDays=0;row.sheetExtrasRetained=true;
+  }
+  if(old&&(summary.scheduleReference||!summary.events.some(e=>['worked','absent','vacation'].includes(e.kind)&&!e.credit))){
+   for(const key of ['worked','absent','vacation'])input[key]=Number(old.data[key]||0);
+   if(!summary.sheetExtrasActive){row.state='reference';row.message='Horario o asistencia de referencia. Se conservan las novedades guardadas.';row.nextAmount=row.currentAmount;return row;}
+  }
+  for(const key of ['sheetExtrasActive','sheetExtraDays','sheetExtraHours','sheetExtraPay'])row[key]=input[key];
   const result=service.payroll.Payroll.calculate(input,w);row.input=input;row.nextAmount=result.ready?result.transfer:null;row.pending=result.pending||[];
   if(result.errors.length){row.message=result.errors.join(' ');return row;}
   row.changes=fields.filter(field=>!old||Number(old.data[field]||0)!==input[field]).map(field=>({field,label:labels[field],before:old?Number(old.data[field]||0):null,after:input[field]}));

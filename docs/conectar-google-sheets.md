@@ -16,7 +16,7 @@ Consulta las instrucciones oficiales de [creación de cuentas](https://docs.clou
 
 Abre el JSON localmente y copia el valor de `client_email`. En la planilla original pulsa **Compartir**, agrega ese correo y selecciona **Lector**. Si tu cuenta no puede compartir el archivo, el propietario de la planilla debe hacerlo. No es necesario hacer pública la planilla.
 
-La aplicación lee el archivo configurado en `server/attendance.cjs`: las hojas **Turnos**, **Nocheros** y **ASEO**, incluidos colores, notas y observaciones.
+La aplicación lee el archivo configurado en `server/attendance.cjs`: las hojas **Turnos**, **Nocheros**, **ASEO** y, si existe, **Horas Extras Trabajadores**, incluidos colores, notas y observaciones.
 
 ## 3. Configurar Vercel
 
