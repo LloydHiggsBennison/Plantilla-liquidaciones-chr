@@ -22,6 +22,7 @@ test('fechas reales de Excel y números de día conservan el mes y el año',()=>
  const november=summary(report([row(3,{3:'Noviembre',4:'31',5:1})],'2026-11'));assert(november.issues.some(e=>e.message.includes('fuera del mes')));
 });
 test('filas incompletas, fechas duplicadas y totales incompatibles bloquean a la persona',()=>{
+ const incomplete=summary(report([row(3,{4:1,5:1,6:'',7:0})]));assert.equal(incomplete.sheetExtraDays,1);assert.equal(incomplete.sheetExtrasIncomplete,true);
  for(const data of [{6:''},{7:'#VALUE!'},{5:3},{4:'1-1'},{4:'32',5:1},{6:0},{6:-1},{7:0},{4:'',5:0}])assert(summary(report([row(3,data)])).issues.length>0,JSON.stringify(data));
  assert(summary(report([row(),row(4,{4:8,5:1})])).issues.some(e=>e.message.includes('duplicadas')));
  const sum=summary(report([row(3,{4:1,5:1,6:4,7:10000.2}),row(4,{4:8,5:1,6:8,7:20000.4})]));assert.equal(sum.sheetExtraDays,2);assert.equal(sum.sheetExtraHours,12);assert.equal(sum.sheetExtraPay,30001);

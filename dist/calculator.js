@@ -40,7 +40,7 @@
    if(r.replacementDays)r.incomeRows.push({label:'Reemplazos ('+r.replacementDays+' días)',amount:r.replacementPay});
    if(r.overtimeHours)r.incomeRows.push({label:'Horas extras / cobertura ('+r.overtimeHours+' horas)',amount:r.overtimePay,note:'8 horas equivalen a un día y 4 horas a medio día, según la regla acordada'});
    if(r.aseoExtraDays)r.incomeRows.push({label:'Jornadas extra ASEO con 50% ('+r.aseoExtraDays+' días)',amount:r.aseoExtraPay});
-   if(r.sheetExtrasActive&&r.sheetExtraHours)r.incomeRows.push({label:'Horas extras de planilla ('+r.sheetExtraHours+' horas)',amount:r.sheetOvertimePay,note:r.sheetExtraDays+' días · Importe registrado en Google Sheets'});
+   if(r.sheetExtrasActive&&r.sheetExtraHours)r.incomeRows.push({label:'Horas extras de planilla ('+r.sheetExtraHours+(r.sheetExtraHours===1?' hora)':' horas)'),amount:r.sheetOvertimePay,note:r.sheetExtraDays+(r.sheetExtraDays===1?' día':' días')+' · Importe registrado en Google Sheets'});
    r.withholding=contract?.receiverWithholds?round(r.gross*(rate||0)):0;r.selfPpm=contract?.receiverWithholds?0:round(r.gross*(rate||0));
    r.deductionRows=[{label:'Retención del receptor',amount:r.withholding},{label:'Anticipos',amount:r.advance}];r.totalDeductions=r.withholding+r.advance;r.preAdvanceNet=r.gross-r.withholding;
    r.warnings.push(contract?.receiverWithholds?'El receptor retiene el impuesto de honorarios.':'Boleta sin retención del receptor: el prestador declara y paga su PPM. El PPM informativo no se descuenta de esta transferencia.');
@@ -60,7 +60,7 @@
   if(r.replacementDays)r.incomeRows.push({label:'Reemplazos ('+r.replacementDays+' días)',amount:r.replacementPay,taxable:true,note:'Valor del día del trabajador × días adicionales'});
   if(r.overtimeHours)r.incomeRows.push({label:'Horas extras / cobertura ('+r.overtimeHours+' horas)',amount:r.overtimePay,taxable:true,note:'8 horas equivalen a un día y 4 horas a medio día, según la regla acordada'});
   if(r.aseoExtraDays)r.incomeRows.push({label:'Jornadas extra ASEO con 50% ('+r.aseoExtraDays+' días)',amount:r.aseoExtraPay,taxable:true,note:'Valor del día × 1,5 × jornadas adicionales asignadas'});
-  if(r.sheetExtrasActive&&r.sheetExtraHours)r.incomeRows.push({label:'Horas extras de planilla ('+r.sheetExtraHours+' horas)',amount:r.sheetOvertimePay,taxable:true,note:r.sheetExtraDays+' días · Importe registrado en Google Sheets'});
+  if(r.sheetExtrasActive&&r.sheetExtraHours)r.incomeRows.push({label:'Horas extras de planilla ('+r.sheetExtraHours+(r.sheetExtraHours===1?' hora)':' horas)'),amount:r.sheetOvertimePay,taxable:true,note:r.sheetExtraDays+(r.sheetExtraDays===1?' día':' días')+' · Importe registrado en Google Sheets'});
   for(const a of w.allowances||[]){
    let amount=a.amount,note='';
    if(a.basis==='day'){amount=round(a.amount*(r.worked+r.replacementDays));note='Tarifa diaria × '+(r.worked+r.replacementDays)+' días y reemplazos';}

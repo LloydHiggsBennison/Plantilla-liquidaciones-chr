@@ -180,6 +180,7 @@ function analyze(sheets,period,workers){
  for(const item of sheetExtras.issues)issues.push(item);
  for(const [id,record]of sheetExtras.records){
   const summary=summaries.get(id);summary.issues.push(...record.issues);summary.sheetExtrasActive=1;
+  summary.sheetExtrasIncomplete=record.issues.length>0;
   summary.sheetExtraDays=record.dayCount;summary.sheetExtraHours=record.hours;summary.sheetExtraPay=record.pay;
   summary.replacementDays=summary.overtimeHours=summary.aseoExtraDays=0;
   summary.events=summary.events.filter(e=>!['replacementDays','overtimeHours','aseoExtraDays'].includes(e.credit));

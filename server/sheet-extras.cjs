@@ -44,9 +44,10 @@ function parse(sheets,period,resolve){
   if(!name||normalize(name)==='TOTAL'||!monthMatches(value(3),period))continue;
   const worker=resolve(name),ref=source(row);
   if(!worker){issues.push({...ref,message:'Trabajador sin correspondencia en horas extras: '+name});continue;}
-  let record=records.get(worker.id);if(!record){record={worker:worker.id,days:new Set(),hours:0,rawPay:0,events:[],issues:[]};records.set(worker.id,record);}
+  let record=records.get(worker.id);if(!record){record={worker:worker.id,days:new Set(),observedDays:new Set(),hours:0,rawPay:0,events:[],issues:[]};records.set(worker.id,record);}
   try{
    const list=dates(value(4),period),count=number(value(5)),hours=number(value(6)),pay=number(value(7));
+   for(const date of list)record.observedDays.add(date);
    if(count!==null&&(!Number.isInteger(count)||count<0||count!==list.length))throw Error('La cantidad total de días no coincide con los días indicados.');
    if(hours!==null&&(!Number.isFinite(hours)||hours<0))throw Error('Indica una cantidad de horas válida.');
    if(pay===null||!Number.isFinite(pay)||pay<0)throw Error('Completa el importe Total de horas extras.');
@@ -58,7 +59,7 @@ function parse(sheets,period,resolve){
    record.events.push({...ref,kind:'sheetExtras',credit:'sheetExtraPay',dates:list,hours:hours||0,days:list.length,pay:Math.round(pay),text:name});
   }catch(error){const item={...ref,worker:worker.id,message:error.message};record.issues.push(item);issues.push(item);}
  }
- for(const record of records.values()){record.pay=Math.round(record.rawPay);record.dayCount=record.days.size;record.dates=[...record.days].sort();}
+ for(const record of records.values()){record.pay=Math.round(record.rawPay);record.dayCount=record.issues.length?record.observedDays.size:record.days.size;record.dates=[...record.observedDays].sort();}
  return {present:true,records,issues};
 }
 module.exports={parse,monthMatches,number,dates,TITLE};
