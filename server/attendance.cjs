@@ -176,12 +176,19 @@ function analyze(sheets,period,workers){
   s.replacementDays++;s.events.push({...e,credit:'replacementDays',amount:1});
  }
  const required=['TURNOS','NOCHEROS','ASEO'];for(const name of required){const entry=Object.entries(sourceDates).find(([k])=>norm(k)===name);if(!entry)issue('No hay fechas del período en la hoja '+name+'.',{});}
+ if(sheetExtras.aseoControlled)for(const s of summaries.values()){
+  s.sheetAseoControlled=true;
+  s.events=s.events.filter(e=>{
+   if(norm(e.sheet)!=='ASEO'||!['replacementDays','overtimeHours','aseoExtraDays'].includes(e.credit))return true;
+   s[e.credit]=Math.max(0,s[e.credit]-(e.amount||0));return false;
+  });
+ }
  if(sheetExtras.invalidLayout)for(const s of summaries.values())s.issues.push(...sheetExtras.issues);
  for(const item of sheetExtras.issues)issues.push(item);
  for(const [id,record]of sheetExtras.records){
   const summary=summaries.get(id);summary.issues.push(...record.issues);summary.sheetExtrasActive=1;
   summary.sheetExtrasIncomplete=record.issues.length>0;
-  summary.sheetExtraDays=record.dayCount;summary.sheetExtraHours=record.hours;summary.sheetExtraPay=record.pay;
+  summary.sheetExtraDays=record.dayCount;summary.sheetExtraAseoDays=record.issues.length?record.observedAseoDays:record.aseoDays;summary.sheetExtraHours=record.hours;summary.sheetExtraPay=record.pay;
   summary.replacementDays=summary.overtimeHours=summary.aseoExtraDays=0;
   summary.events=summary.events.filter(e=>!['replacementDays','overtimeHours','aseoExtraDays'].includes(e.credit));
   summary.events.push(...record.events);

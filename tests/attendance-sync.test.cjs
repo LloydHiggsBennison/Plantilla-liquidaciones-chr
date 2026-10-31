@@ -52,3 +52,14 @@ test('actualizar HHEE conserva asistencia manual y anticipo y no suma otros adic
  await sync.apply({token:p.token,workers:['demo']},service,admin,env);const saved=await service.store.get('demo_2026-10');assert.equal(saved.data.sheetExtraPay,55355);assert.equal(saved.data.sheetExtraHours,12);assert.equal(saved.data.replacementDays,0);assert.equal(saved.data.overtimeHours,0);assert.equal(saved.data.advance,40000);assert.equal(saved.snapshot.result.sheetOvertimePay,55355);
  const missing=await sync.preview(report({worked:20,absent:0}),service,admin,'google',env);assert.equal(missing.rows[0].input.sheetExtraPay,55355);assert.equal(missing.rows[0].input.replacementDays,0);assert.equal(missing.rows[0].state,'unchanged');
 }));
+
+test('HHEE Aseo se guarda sin duplicar el importe y poner cero elimina solo los adicionales de la planilla',async()=>fixture(async service=>{
+ const source=report({worked:20,absent:0,sheetAseoControlled:true,sheetExtrasActive:1,sheetExtraDays:0,sheetExtraAseoDays:2,sheetExtraHours:16,sheetExtraPay:73807});
+ const p=await sync.preview(source,service,admin,'google',env);assert.equal(p.rows[0].input.sheetExtraAseoDays,2);
+ await sync.apply({token:p.token,workers:['demo']},service,admin,env);const saved=await service.store.get('demo_2026-10');assert.equal(saved.data.sheetExtraAseoDays,2);assert.equal(saved.data.sheetExtraDays,0);assert.equal(saved.snapshot.result.extraDays,2);assert.equal(saved.data.advance,40000);assert.equal(saved.snapshot.result.sheetOvertimePay,73807);assert.equal(saved.snapshot.result.aseoExtraPay,0);
+ const repeat=await sync.preview(source,service,admin,'google',env);assert.equal(repeat.rows[0].state,'unchanged');
+ const historical=await sync.preview(report({worked:20,absent:0}),service,admin,'google',env);assert.equal(historical.rows[0].input.sheetExtraAseoDays,2);assert.equal(historical.rows[0].state,'unchanged');
+ const missing=await sync.preview(report({worked:20,absent:0,sheetAseoControlled:true}),service,admin,'google',env);assert.equal(missing.rows[0].state,'blocked');assert.equal((await service.store.get('demo_2026-10')).revision,2);
+ const zero=await sync.preview(report({worked:20,absent:0,sheetAseoControlled:true,sheetExtrasActive:1,sheetExtraDays:0,sheetExtraAseoDays:0,sheetExtraHours:0,sheetExtraPay:0}),service,admin,'google',env);
+ await sync.apply({token:zero.token,workers:['demo']},service,admin,env);const cleared=await service.store.get('demo_2026-10');assert.equal(cleared.data.sheetExtraAseoDays,0);assert.equal(cleared.snapshot.result.sheetOvertimePay,0);assert.equal(cleared.data.worked,20);assert.equal(cleared.data.advance,40000);
+}));
