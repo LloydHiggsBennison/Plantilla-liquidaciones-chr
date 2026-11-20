@@ -1,11 +1,12 @@
 const fs=require('node:fs/promises'),path=require('node:path');
 const auth=require('../server/auth.cjs'),login=require('../server/login.cjs');
 const {DraftService,loadPayroll}=require('../server/drafts.cjs');
-const {getStore}=require('../server/draft-store.cjs');
+const {getStore,getMailStore}=require('../server/draft-store.cjs');
 const serviceCache=new Map();
+const mailCache=new Map();
 const root=path.resolve(__dirname,'..','private-dist');
 const attempts=new Map();
-const assets=new Set(['index.html','styles.css','app.js','shared-ui.js','attendance-ui.js','calculator.js','pdf.js','profiles.js','workers.js','pension-data.js','payroll-rules.js','vendor/jspdf.umd.min.js']);
+const assets=new Set(['index.html','styles.css','app.js','shared-ui.js','attendance-ui.js','mail-ui.js','calculator.js','pdf.js','profiles.js','workers.js','pension-data.js','payroll-rules.js','vendor/jspdf.umd.min.js']);
 const types={'.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8','.css':'text/css; charset=utf-8'};
 function send(res,status,body,type='text/html; charset=utf-8'){res.statusCode=status;res.setHeader('Content-Type',type);res.end(body);}
 function redirect(res,to){res.statusCode=303;res.setHeader('Location',to);res.end();}
@@ -57,13 +58,21 @@ async function handler(req,res,assetRoot,dependencies={}){
   try{
    let input;
    if(resource.startsWith('api/attendance')&&identity.role!=='admin')return json(403,{error:'Solo administración puede actualizar desde la planilla.'});
+   if(resource.startsWith('api/mail')&&identity.role!=='admin')return json(403,{error:'Solo administración puede enviar pre nóminas.'});
    const draftService=()=>{let service=dependencies.service||serviceCache.get(assetRoot);if(!service){service=new DraftService(getStore(),loadPayroll(assetRoot));serviceCache.set(assetRoot,service);}return service;};
    if(resource==='api/attendance/connection'&&req.method==='GET')return json(200,{configured:Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL&&process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY)});
    if(req.method==='POST'){
     if(!sameOrigin(req)||!auth.validCsrf(req.headers['x-csrf-token'])||!auth.equal(req.headers['x-csrf-token'],auth.csrfCookie(req)))return json(403,{error:'Solicitud no permitida.'});
-    try{input=await readJson(req,['api/attendance','api/attendance/preview'].includes(resource)?3*1024*1024:resource==='api/attendance/apply'?128*1024:8192);}catch{return json(400,{error:'Datos de solicitud inválidos o archivo demasiado grande.'});}
+    try{input=await readJson(req,['api/attendance','api/attendance/preview'].includes(resource)?3*1024*1024:resource==='api/attendance/apply'?128*1024:resource.startsWith('api/mail/')?32768:8192);}catch{return json(400,{error:'Datos de solicitud inválidos o archivo demasiado grande.'});}
     if(resource==='api/drafts'&&identity.role!=='admin')return json(403,{error:'El comité no puede editar los borradores.'});
     if(resource.endsWith('/transfer')&&!['admin','committee'].includes(identity.role))return json(403,{error:'Solo administración y comité pueden registrar transferencias.'});
+   }
+   if(resource.startsWith('api/mail/')){
+    let mail=dependencies.mail||mailCache.get(assetRoot);if(!mail){const {PrenominaMail}=require('../server/prenomina-mail.cjs');mail=new PrenominaMail(draftService(),getMailStore());mailCache.set(assetRoot,mail);}
+    if(resource==='api/mail/preview'&&req.method==='GET')return json(200,await mail.preview(url.searchParams.get('period')||req.query?.period,identity));
+    if(resource==='api/mail/send'&&req.method==='POST')return json(200,await mail.send(input,identity));
+    if(resource==='api/mail/pdf'&&req.method==='POST'){const file=await mail.previewPdf(input,identity);res.setHeader('Content-Disposition','attachment; filename="'+file.filename+'"');return send(res,200,file.buffer,'application/pdf');}
+    return json(404,{error:'No encontrado.'});
    }
    if(resource==='api/attendance/apply'&&req.method==='POST')return json(200,await require('../server/attendance-sync.cjs').apply(input,draftService(),identity));
    if(['api/attendance','api/attendance/preview'].includes(resource)&&['GET','POST'].includes(req.method)){

@@ -12,19 +12,21 @@ class LocalStore{
  }
 }
 class PostgresStore{
- constructor(url,queryClient){if(queryClient)this.sql=queryClient;else{const {neon}=require('@neondatabase/serverless');this.sql=neon(url);}this.ready=null;}
- async init(){if(!this.ready)this.ready=this.sql.query('CREATE TABLE IF NOT EXISTS chr_payroll_drafts (id TEXT PRIMARY KEY, revision INTEGER NOT NULL, document JSONB NOT NULL)').catch(e=>{this.ready=null;throw e;});await this.ready;}
- async list(period){await this.init();const rows=await this.sql.query('SELECT document FROM chr_payroll_drafts WHERE ($1::text IS NULL OR document->>\'period\' = $1) ORDER BY id',[period||null]);return rows.map(x=>x.document);}
- async get(id){await this.init();const rows=await this.sql.query('SELECT document FROM chr_payroll_drafts WHERE id = $1',[id]);return rows[0]?.document||null;}
+ constructor(url,queryClient,table='chr_payroll_drafts'){if(!['chr_payroll_drafts','chr_payroll_mail'].includes(table))throw new Error('Tabla no permitida.');this.table=table;if(queryClient)this.sql=queryClient;else{const {neon}=require('@neondatabase/serverless');this.sql=neon(url);}this.ready=null;}
+ async init(){if(!this.ready)this.ready=this.sql.query('CREATE TABLE IF NOT EXISTS '+this.table+' (id TEXT PRIMARY KEY, revision INTEGER NOT NULL, document JSONB NOT NULL)').catch(e=>{this.ready=null;throw e;});await this.ready;}
+ async list(period){await this.init();const rows=await this.sql.query('SELECT document FROM '+this.table+' WHERE ($1::text IS NULL OR document->>\'period\' = $1) ORDER BY id',[period||null]);return rows.map(x=>x.document);}
+ async get(id){await this.init();const rows=await this.sql.query('SELECT document FROM '+this.table+' WHERE id = $1',[id]);return rows[0]?.document||null;}
  async compareAndSet(record,expected){
   await this.init();
-  const rows=await this.sql.query(`INSERT INTO chr_payroll_drafts(id,revision,document)
-   SELECT $1,$2,$3::jsonb WHERE $4::integer=0 OR EXISTS(SELECT 1 FROM chr_payroll_drafts WHERE id=$1 AND revision=$4)
+  const rows=await this.sql.query(`INSERT INTO ${this.table}(id,revision,document)
+   SELECT $1,$2,$3::jsonb WHERE $4::integer=0 OR EXISTS(SELECT 1 FROM ${this.table} WHERE id=$1 AND revision=$4)
    ON CONFLICT(id) DO UPDATE SET revision=EXCLUDED.revision,document=EXCLUDED.document
-   WHERE chr_payroll_drafts.revision=$4 RETURNING document`,[record.id,record.revision,JSON.stringify(record),expected]);
+   WHERE ${this.table}.revision=$4 RETURNING document`,[record.id,record.revision,JSON.stringify(record),expected]);
   return rows[0]?.document||null;
  }
 }
 let shared;
 function getStore(){if(shared)return shared;if(process.env.DATABASE_URL)return shared=new PostgresStore(process.env.DATABASE_URL);if(process.env.DRAFTS_LOCAL_FILE&&!process.env.VERCEL)return shared=new LocalStore(process.env.DRAFTS_LOCAL_FILE);throw new StoreError(503,'El guardado compartido necesita una base de datos. Configura DATABASE_URL en Vercel.');}
-module.exports={getStore,LocalStore,PostgresStore,StoreError};
+let mailStore;
+function getMailStore(){if(mailStore)return mailStore;if(process.env.DATABASE_URL)return mailStore=new PostgresStore(process.env.DATABASE_URL,null,'chr_payroll_mail');if(process.env.DRAFTS_LOCAL_FILE&&!process.env.VERCEL)return mailStore=new LocalStore(process.env.DRAFTS_LOCAL_FILE+'.mail.json');throw new StoreError(503,'Configura DATABASE_URL para registrar los envíos.');}
+module.exports={getStore,getMailStore,LocalStore,PostgresStore,StoreError};

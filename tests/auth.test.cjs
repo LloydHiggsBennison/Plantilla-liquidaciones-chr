@@ -10,7 +10,7 @@ test('flujo HTTP protege datos, rechaza CSRF y cierra sesión',async()=>{
  const previous={};for(const k of Object.keys(env)){previous[k]=process.env[k];process.env[k]=env[k];}
  const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'nomina-auth-test-'));
  fs.writeFileSync(path.join(fixture,'workers.js'),'window.WORKERS=[];');fs.writeFileSync(path.join(fixture,'index.html'),'<html><header></header></html>');
- const handler=require('../api/gateway.js').createHandler(fixture,{service:{markTransferred:async(id,input,identity)=>({id,transferredBy:identity.username,role:identity.role})}});
+ const handler=require('../api/gateway.js').createHandler(fixture,{service:{markTransferred:async(id,input,identity)=>({id,transferredBy:identity.username,role:identity.role})},mail:{preview:async(period,identity)=>({period,role:identity.role}),send:async(input,identity)=>({role:identity.role,status:'test-only'}),previewPdf:async()=>({filename:'test.pdf',buffer:Buffer.from('%PDF-test-only')})}});
  const server=http.createServer((req,res)=>handler(req,res).catch(()=>{res.statusCode=500;res.end();}));await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const base='http://127.0.0.1:'+server.address().port;
  const request=(url,options={})=>fetch(base+url,{redirect:'manual',...options});
@@ -25,10 +25,16 @@ test('flujo HTTP protege datos, rechaza CSRF y cierra sesión',async()=>{
   const headers={Cookie:cookie.split(';')[0]+'; '+csrfCookie};
   const mutate={method:'POST',headers:{...headers,Origin:base,'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({expectedRevision:1})};
   const adminTransfer=await request(prefix+'/api/drafts/test_2026-10/transfer',mutate);assert.equal(adminTransfer.status,200);assert.equal((await adminTransfer.json()).draft.role,'admin');
+  const mailPreview=await request(prefix+'/api/mail/preview?period=2026-10',{headers});assert.equal(mailPreview.status,200);assert.equal((await mailPreview.json()).role,'admin');
+  const mailSent=await request(prefix+'/api/mail/send',mutate);assert.equal(mailSent.status,200);assert.equal((await mailSent.json()).role,'admin');
+  const mailPdf=await request(prefix+'/api/mail/pdf',mutate);assert.equal(mailPdf.status,200);assert.equal(mailPdf.headers.get('content-type'),'application/pdf');
+  assert.equal((await request(prefix+'/api/mail/send',{...mutate,headers:{...headers,Origin:base,'Content-Type':'application/json'}})).status,403);
   assert.equal((await request(prefix+'/api/drafts/test_2026-10/transfer',{...mutate,headers:{...headers,Origin:base,'Content-Type':'application/json'}})).status,403);
   const committeeResponse=await request('/login',post('username=committee-test&password=committee-pass'));assert.equal(committeeResponse.status,200);const committeeTab=(await committeeResponse.json()).tab,committeeCookie=committeeResponse.headers.get('set-cookie').split(';')[0];
   const committeeTransfer=await request('/s/'+committeeTab+'/api/drafts/test_2026-10/transfer',{...mutate,headers:{...mutate.headers,Cookie:committeeCookie+'; '+csrfCookie}});assert.equal(committeeTransfer.status,200);assert.equal((await committeeTransfer.json()).draft.role,'committee');
   const forbidden=await request('/s/'+committeeTab+'/api/drafts',{...mutate,headers:{...mutate.headers,Cookie:committeeCookie+'; '+csrfCookie}});assert.equal(forbidden.status,403);
+  assert.equal((await request('/s/'+committeeTab+'/api/mail/preview?period=2026-10',{headers:{Cookie:committeeCookie}})).status,403);
+  for(const route of ['send','pdf'])assert.equal((await request('/s/'+committeeTab+'/api/mail/'+route,{...mutate,headers:{...mutate.headers,Cookie:committeeCookie+'; '+csrfCookie}})).status,403);
   assert.equal((await request('/s/'+committeeTab+'/api/attendance?period=2026-10',{headers:{Cookie:committeeCookie}})).status,403);
   assert.equal((await request('/s/'+committeeTab+'/api/attendance',{...mutate,headers:{...mutate.headers,Cookie:committeeCookie+'; '+csrfCookie}})).status,403);
   for(const route of ['connection','preview?period=2026-10'])assert.equal((await request('/s/'+committeeTab+'/api/attendance/'+route,{headers:{Cookie:committeeCookie}})).status,403);

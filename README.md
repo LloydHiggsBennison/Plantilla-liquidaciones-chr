@@ -1,5 +1,7 @@
 # Condominio Horizonte de Reñaca
 
+El envío individual de pre nóminas por Gmail se configura según [la guía de correo](docs/envio-prenominas.md). Los destinatarios sin correo confirmado quedan excluidos y cada mensaje adjunta únicamente el PDF de su trabajador.
+
 Aplicación estática para calcular liquidaciones de sueldo a partir de un selector de trabajador, días de asistencia, ausencias sin goce y anticipos. Exporta el detalle y el total a transferir en PDF A4.
 
 ## Ejecutar localmente
