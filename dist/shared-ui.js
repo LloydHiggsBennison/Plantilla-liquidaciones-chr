@@ -45,7 +45,8 @@ async function refreshShared(){
  finally{refreshing=false;$('refresh-board').disabled=false;}
 }
 function downloadBlob(blob,name){const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),5000);}
-const orderedWorkers=[...WORKERS].sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
+const workerSurname=w=>w.name.trim().split(/\s+/).slice(1).join(' ').replace(/^(?:de(?: la| las| los)?|del)\s+/i,'');
+const orderedWorkers=[...WORKERS].sort((a,b)=>workerSurname(a).localeCompare(workerSurname(b),'es',{sensitivity:'base'})||a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
 $('worker').innerHTML=orderedWorkers.map(w=>'<option value="'+w.id+'">'+escapeHtml(w.name)+' · '+escapeHtml(w.role)+'</option>').join('');
 $('total-staff').textContent=$('team-count').textContent=WORKERS.length;
 $('team-grid').innerHTML=orderedWorkers.map(w=>'<article class="worker-card"><span class="worker-avatar">'+initials(w.name)+'</span><div><strong>'+escapeHtml(w.name)+'</strong><small>'+escapeHtml(w.role)+'</small></div></article>').join('');
