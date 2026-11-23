@@ -33,7 +33,7 @@ async function fromXlsx(buffer){
  for(const sheet of wb.worksheets){if(!['TURNOS','NOCHEROS','ASEO','HORAS EXTRAS TRABAJADORES'].includes(norm(sheet.name)))continue;
   if(sheet.rowCount>3000||sheet.columnCount>100)throw Error('La planilla supera el tamaño de lectura permitido.');
   const rows=[];sheet.eachRow({includeEmpty:false},(row,index)=>{const cells={};row.eachCell({includeEmpty:true},(cell,col)=>{
-   const fill=cell.fill?.fgColor?.argb||'FFFFFF';cells[col]={value:cell.value instanceof Date?cell.value:textValue(cell.value),color:fill,ref:cell.address,note:typeof cell.note==='string'?cell.note:''};
+   const fill=cell.fill?.fgColor?.argb||'FFFFFF';cells[col]={value:cell.value instanceof Date?cell.value:textValue(cell.value),formattedValue:cell.text,numberFormat:{type:cell.value instanceof Date?'DATE':'',pattern:cell.numFmt||''},color:fill,ref:cell.address,note:typeof cell.note==='string'?cell.note:''};
   });rows.push({index,cells});});sheets.push({name:sheet.name,rows});
  }return sheets;
 }
@@ -48,11 +48,11 @@ async function fromGoogle(env=process.env,fetcher=fetch){
  if(!tokenResponse.ok)throw Error('No se pudo autenticar la cuenta de servicio de Google.');const token=await tokenResponse.json();
  const metadata=await fetcher(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}?fields=sheets(properties(title))`,{headers:{Authorization:'Bearer '+token.access_token},signal:AbortSignal.timeout(15000)});
  if(!metadata.ok)throw Error('No se pudieron consultar las hojas de Google Sheets.');const titles=(await metadata.json()).sheets.map(s=>s.properties.title);
- const query=new URLSearchParams({includeGridData:'true',fields:'sheets(properties(title),data(startRow,startColumn,rowData(values(effectiveValue,formattedValue,effectiveFormat(backgroundColor),note))))'});
+ const query=new URLSearchParams({includeGridData:'true',fields:'sheets(properties(title),data(startRow,startColumn,rowData(values(effectiveValue,formattedValue,effectiveFormat(backgroundColor,numberFormat),note))))'});
  for(const name of ['Turnos','Nocheros','ASEO',...titles.filter(t=>norm(t)==='HORAS EXTRAS TRABAJADORES')])query.append('ranges',`'${name.replace(/'/g,"''")}'!A1:K3000`);
  const response=await fetcher(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}?${query}`,{headers:{Authorization:'Bearer '+token.access_token},signal:AbortSignal.timeout(20000)});
  if(!response.ok)throw Error('Google no permitió leer la planilla. Comparte el documento como lector con la cuenta de servicio y verifica los nombres de las hojas.');
- const data=await response.json();return data.sheets.map(s=>({name:s.properties.title,rows:s.data.flatMap(g=>(g.rowData||[]).map((r,i)=>({index:(g.startRow||0)+i+1,cells:Object.fromEntries((r.values||[]).map((c,j)=>{const col=(g.startColumn||0)+j+1;return [col,{value:c.effectiveValue?.numberValue??c.formattedValue??c.effectiveValue?.stringValue??'',color:rgbColor(c.effectiveFormat?.backgroundColor),ref:String.fromCharCode(64+col)+((g.startRow||0)+i+1),note:c.note||''}];}))})))}));
+ const data=await response.json();return data.sheets.map(s=>({name:s.properties.title,rows:s.data.flatMap(g=>(g.rowData||[]).map((r,i)=>({index:(g.startRow||0)+i+1,cells:Object.fromEntries((r.values||[]).map((c,j)=>{const col=(g.startColumn||0)+j+1;return [col,{value:c.effectiveValue?.numberValue??c.formattedValue??c.effectiveValue?.stringValue??'',formattedValue:c.formattedValue||'',numberFormat:c.effectiveFormat?.numberFormat||null,color:rgbColor(c.effectiveFormat?.backgroundColor),ref:String.fromCharCode(64+col)+((g.startRow||0)+i+1),note:c.note||''}];}))})))}));
 }
 function analyze(sheets,period,workers){
  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(period||''))throw Error('Selecciona un mes válido.');
@@ -61,13 +61,13 @@ function analyze(sheets,period,workers){
  function matches(value,sheet){const t=' '+norm(value)+' ';return roster.filter(w=>w.aliases.some(a=>t.includes(' '+a+' ')));}
  function one(value,sheet){const found=matches(value,sheet);return found.length===1?found[0]:null;}
  const sheetExtras=require('./sheet-extras.cjs').parse(sheets,period,value=>one(value,'Horas Extras Trabajadores'));
- const summaries=new Map(roster.map(w=>[w.id,{worker:w.id,name:w.name,role:w.role,worked:0,absent:0,vacation:0,replacementDays:0,overtimeHours:0,aseoExtraDays:0,issues:[],events:[]}]));
+ const summaries=new Map(roster.map(w=>[w.id,{worker:w.id,name:w.name,role:w.role,worked:0,absent:0,vacation:0,medicalDays:0,replacementDays:0,overtimeHours:0,aseoExtraDays:0,issues:[],events:[]}]));
  const issues=[],days=new Map(),replacements=new Map(),sourceDates={},aseoExtras=new Map();
  function issue(message,source,ids=[],category='attendance'){
   if(category==='extras'&&ids.length){ids=ids.filter(id=>!sheetExtras.records.has(id));if(!ids.length)return;}
   const item={message,...source};issues.push(item);for(const id of ids)if(summaries.has(id))summaries.get(id).issues.push(item);
  }
- function record(w,kind,source){const key=w.id+'|'+source.date;const old=days.get(key);if(old&&old.kind!==kind){if(kind==='worked')return;if(old.kind!=='worked'){issue('Estados incompatibles para la misma fecha.',source,[w.id]);return;}}if(!old||kind!=='worked')days.set(key,{worker:w.id,kind,...source});}
+ function record(w,kind,source){const extra=sheetExtras.records.get(w.id);if(extra&&!extra.issues.length&&extra.vacationDates.has(source.date))kind='vacation';const key=w.id+'|'+source.date;const old=days.get(key);if(old&&old.kind!==kind){if(kind==='worked')return;if(old.kind!=='worked'){issue('Estados incompatibles para la misma fecha.',source,[w.id]);return;}}if(!old||kind!=='worked')days.set(key,{worker:w.id,kind,...source});}
  const special=new Set(['Angel Villegas','Luis San Martin','Eduardo de la Prida'].map(n=>byName(n)?.id).filter(Boolean));
  for(const sheet of sheets){const name=norm(sheet.name);if(!['TURNOS','NOCHEROS','ASEO'].includes(name))continue;const header=sheet.rows.find(r=>r.index===2)?.cells||{};
   for(const row of sheet.rows){if(row.index<3)continue;const date=excelDate(row.cells[name==='ASEO'?1:2]?.value);if(!date||!date.startsWith(period+'-'))continue;
@@ -86,7 +86,7 @@ function analyze(sheets,period,workers){
     }
     if(!w){if(!/^M ALCAINO$/.test(norm(value)))issue('Nombre sin correspondencia: '+(name==='ASEO'?header[col]?.value:value),ref);continue;}
     let kind=colorKind(cell.color);if(norm(value)==='VAC')kind='vacation';
-    if(norm(value)==='LM'){issue('Licencia médica: requiere revisar el tratamiento del período.',ref,[w.id]);continue;}
+    if(norm(value)==='LM'){if((w.confirmedMedicalLeaves||[]).some(leave=>date>=leave.from&&date<=leave.to))record(w,'medicalDays',{...ref,text:value});else issue('Licencia médica: requiere revisar el tratamiento del período.',ref,[w.id]);continue;}
     if(kind==='unknown'){issue('Color no definido: '+cell.color,ref,[w.id]);continue;}
     if(name==='ASEO'&&(new Date(date+'T00:00:00Z').getUTCDay()===0||norm(w.name)==='LUIS ALCAINO')){
      const sunday=new Date(date+'T00:00:00Z').getUTCDay()===0;
@@ -143,7 +143,7 @@ function analyze(sheets,period,workers){
   }
  }
  // One day per worker/date, even when the name appears in both day and afternoon columns.
- for(const event of days.values()){const s=summaries.get(event.worker);s[event.kind==='vacation'?'vacation':event.kind==='absent'?'absent':'worked']++;s.events.push(event);}
+ for(const event of days.values()){const s=summaries.get(event.worker);s[event.kind==='vacation'?'vacation':event.kind==='absent'?'absent':event.kind==='medicalDays'?'medicalDays':'worked']++;s.events.push(event);}
  for(const event of aseoExtras.values()){const s=summaries.get(event.worker);s[event.credit]+=event.amount;s.events.push(event);}
  const sharedHandled=new Set();
  for(const date of new Set([...days.values()].map(e=>e.date))){
@@ -165,7 +165,7 @@ function analyze(sheets,period,workers){
   if(norm(e.sheet)==='ASEO'&&aseoExtras.has(e.date+'|'+e.replacer))continue;
   if(e.kind==='internal'){issue('Cambio interno: confirmar si genera un adicional.',e,[e.replacer],'extras');continue;}
   if(days.get(e.missing+'|'+e.date)?.kind==='worked'){
-   issue('El trabajador reemplazado figura como trabajado ese día. Corrige la asistencia o la observación de reemplazo.',e,[e.missing,e.replacer]);continue;
+   issue('El trabajador reemplazado figura como trabajado ese día. Corrige la asistencia o la observación de reemplazo.',e,[e.missing,e.replacer],'extras');continue;
   }
   if(e.date==='2026-10-16'&&norm(s.name)==='CRISTIAN ALLENDES'){s.events.push({...e,credit:'Sin adicional: excepción confirmada'});continue;}
   if(special.has(e.replacer)&&special.has(e.missing)){
@@ -187,6 +187,11 @@ function analyze(sheets,period,workers){
  for(const item of sheetExtras.issues)issues.push(item);
  for(const [id,record]of sheetExtras.records){
   const summary=summaries.get(id);summary.issues.push(...record.issues);summary.sheetExtrasActive=1;
+  if(!record.issues.length)for(const date of record.vacationDates){
+   const prior=summary.events.find(e=>e.date===date&&!e.credit&&['worked','absent','vacation'].includes(e.kind));
+   if(prior)summary[prior.kind]--;
+   summary.events=summary.events.filter(e=>!(e.date===date&&!e.credit&&['worked','absent','vacation'].includes(e.kind)));summary.vacation++;
+  }
   summary.sheetExtrasIncomplete=record.issues.length>0;
   summary.sheetExtraDays=record.dayCount;summary.sheetExtraAseoDays=record.issues.length?record.observedAseoDays:record.aseoDays;summary.sheetExtraHours=record.hours;summary.sheetExtraPay=record.pay;
   summary.replacementDays=summary.overtimeHours=summary.aseoExtraDays=0;

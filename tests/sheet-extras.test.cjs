@@ -76,3 +76,17 @@ test('XLSX con HHEE Aseo usa los resultados de las fórmulas en G y H',async()=>
  const ExcelJS=require('exceljs'),wb=new ExcelJS.Workbook(),sheet=wb.addWorksheet('Horas Extras Trabajadores');for(const [col,value]of Object.entries(aseoHeader.cells))sheet.getCell(1,Number(col)).value=value.value;for(const [col,value]of Object.entries(aseoRow().cells))sheet.getCell(3,Number(col)).value=value.value;sheet.getCell('G3').value={formula:'8*E3',result:16};sheet.getCell('H3').value={formula:'G3*4612.9416666667',result:73807.06666666667};
  const sheets=await fromXlsx(Buffer.from(await wb.xlsx.writeBuffer())),s=summary(analyze(sheets,'2026-10',roster));assert.equal(s.sheetExtraAseoDays,2);assert.equal(s.sheetExtraHours,16);assert.equal(s.sheetExtraPay,73807);assert.equal(s.issues.length,0);
 });
+
+const vacationHeader={...aseoHeader,cells:{...aseoHeader.cells,8:c('Vacaciones'),9:c('Total')}};
+test('la columna Vacaciones desplaza el importe a I y las vacaciones sin HHEE no generan pagos adicionales',()=>{
+ const data=aseoRow({4:1,5:0,6:1,7:'',8:'1',9:0});const s=summary(report([data],'2026-10',vacationHeader));assert.equal(s.issues.length,0);assert.equal(s.worked,0);assert.equal(s.vacation,1);assert.equal(s.sheetExtraDays,0);assert.equal(s.sheetExtraHours,0);assert.equal(s.sheetExtraPay,0);assert.equal(s.events.find(e=>e.kind==='sheetExtras').cell,'A3:I3');
+ const paid=summary(report([aseoRow({4:1,5:0,6:1,7:8,8:4,9:36903.533})],'2026-10',vacationHeader));assert.equal(paid.sheetExtraPay,36904);assert.equal(paid.sheetExtraDays,1);assert.equal(paid.sheetExtraHours,8);
+});
+test('las listas de días convertidas a fechas por Google usan el texto visible y el conteo explícito',()=>{
+ for(const [serial,visible,pattern,count,expected]of [[44776,'3-8-22','d-m-yy',3,['03','08','22']],[46145,'3-5','d-m',2,['03','05']]]){
+  const data=aseoRow({3:'Noviembre',4:serial,5:0,6:count,7:12,8:'',9:55355.3});data.cells[4].formattedValue=visible;data.cells[4].numberFormat={type:'DATE',pattern};const s=summary(report([data],'2026-11',vacationHeader));assert.equal(s.issues.length,0);assert.equal(s.sheetExtraDays,count);assert.deepEqual(s.events.find(e=>e.kind==='sheetExtras').dates,expected.map(d=>'2026-11-'+d));
+ }
+});
+test('una licencia confirmada cuenta fechas únicas y permanece separada de asistencia y vacaciones',()=>{
+ const workerWithLeave={...worker,confirmedMedicalLeaves:[{from:'2026-11-01',to:'2026-11-11'}]},s=summary(analyze([{name:'ASEO',rows:[{index:2,cells:{3:c('A.ARIZA')}},{index:3,cells:{1:c('2026-11-01'),3:c('LM')}},{index:4,cells:{1:c('2026-11-02'),3:c('LM')}},{index:5,cells:{1:c('2026-11-12'),3:c('PV')}}]}],'2026-11',[workerWithLeave]));assert.equal(s.medicalDays,2);assert.equal(s.absent,0);assert.equal(s.worked,1);assert.equal(s.issues.length,0);
+});

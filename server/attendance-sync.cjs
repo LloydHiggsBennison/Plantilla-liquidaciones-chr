@@ -1,7 +1,7 @@
 const crypto=require('node:crypto');
 const {StoreError}=require('./draft-store.cjs');
-const fields=['worked','absent','vacation','replacementDays','overtimeHours','aseoExtraDays','sheetExtrasActive','sheetExtraDays','sheetExtraAseoDays','sheetExtraHours','sheetExtraPay'];
-const labels={worked:'Días base',absent:'Ausencias sin goce',vacation:'Vacaciones pagadas',replacementDays:'Días adicionales',overtimeHours:'Horas de cobertura',aseoExtraDays:'Jornadas extra ASEO con 50%',sheetExtrasActive:'Horas extras desde planilla',sheetExtraDays:'Reemplazos o dobles turnos',sheetExtraAseoDays:'ASEO: domingos y feriados',sheetExtraHours:'Horas extras de planilla',sheetExtraPay:'Importe HHEE (CLP)'};
+const fields=['worked','absent','vacation','medicalDays','replacementDays','overtimeHours','aseoExtraDays','sheetExtrasActive','sheetExtraDays','sheetExtraAseoDays','sheetExtraHours','sheetExtraPay'];
+const labels={worked:'Días base',absent:'Ausencias sin goce',vacation:'Vacaciones pagadas',medicalDays:'Días de licencia médica',replacementDays:'Días adicionales',overtimeHours:'Horas de cobertura',aseoExtraDays:'Jornadas extra ASEO con 50%',sheetExtrasActive:'Horas extras desde planilla',sheetExtraDays:'Reemplazos o dobles turnos',sheetExtraAseoDays:'ASEO: domingos y feriados',sheetExtraHours:'Horas extras de planilla',sheetExtraPay:'Importe HHEE (CLP)'};
 function key(env){if(!env.AUTH_SESSION_SECRET)throw new StoreError(503,'Falta configurar el acceso privado.');return crypto.createHash('sha256').update('chr-attendance-preview-v1|'+env.AUTH_SESSION_SECRET).digest();}
 function seal(value,env){const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',key(env),iv);const data=Buffer.concat([cipher.update(JSON.stringify(value),'utf8'),cipher.final()]);return Buffer.concat([iv,cipher.getAuthTag(),data]).toString('base64url');}
 function unseal(token,env){
@@ -23,8 +23,8 @@ async function preview(report,service,identity,source='excel',env=process.env,no
    for(const key of ['sheetExtrasActive','sheetExtraDays','sheetExtraAseoDays','sheetExtraHours','sheetExtraPay'])input[key]=Number(old.data[key]||0);
    input.replacementDays=input.overtimeHours=input.aseoExtraDays=0;row.sheetExtrasRetained=true;
   }
-  if(old&&(summary.scheduleReference||!summary.events.some(e=>['worked','absent','vacation'].includes(e.kind)&&!e.credit))){
-   for(const key of ['worked','absent','vacation'])input[key]=Number(old.data[key]||0);
+  if(old&&(summary.scheduleReference||!summary.events.some(e=>['worked','absent','vacation','medicalDays'].includes(e.kind)&&!e.credit))){
+   for(const key of ['worked','absent','vacation','medicalDays'])input[key]=Number(old.data[key]||0);
    if(!summary.sheetExtrasActive){row.state='reference';row.message='Horario o asistencia de referencia. Se conservan las novedades guardadas.';row.nextAmount=row.currentAmount;return row;}
   }
   for(const key of ['sheetExtrasActive','sheetExtraDays','sheetExtraAseoDays','sheetExtraHours','sheetExtraPay'])row[key]=input[key];

@@ -1,6 +1,6 @@
 (function(root){
  const basicFields=['worked','absent','advance'];
- const fields=[...basicFields,'vacation','replacementDays','overtimeHours','aseoExtraDays','sheetExtrasActive','sheetExtraDays','sheetExtraAseoDays','sheetExtraHours','sheetExtraPay'];
+ const fields=[...basicFields,'vacation','medicalDays','replacementDays','overtimeHours','aseoExtraDays','sheetExtrasActive','sheetExtraDays','sheetExtraAseoDays','sheetExtraHours','sheetExtraPay'];
  const taxBands=[{limit:13.5,rate:0,rebate:0},{limit:30,rate:0.04,rebate:0.54},{limit:50,rate:0.08,rebate:1.74},{limit:70,rate:0.135,rebate:4.49},{limit:90,rate:0.23,rebate:11.14},{limit:120,rate:0.304,rebate:17.8},{limit:310,rate:0.35,rebate:23.32},{limit:Infinity,rate:0.4,rebate:38.82}];
  const round=Math.round;
  function monthlyTax(base,utm){const band=taxBands.find(b=>base<=b.limit*utm);return Math.max(0,round(base*band.rate-band.rebate*utm));}
@@ -12,6 +12,7 @@
   const days=validPeriod?new Date(Number(d.period.slice(0,4)),Number(d.period.slice(5,7)),0).getDate():31;
   if(!Number.isInteger(r.worked)||!Number.isInteger(r.absent))r.errors.push('Los días deben ser números enteros.');
   if(!Number.isInteger(r.vacation)||!Number.isInteger(r.replacementDays))r.errors.push('Vacaciones y días de reemplazo deben ser enteros.');
+  if(!Number.isInteger(r.medicalDays)||r.medicalDays>days)r.errors.push('La licencia médica debe indicar días enteros dentro del mes.');
   if(!Number.isInteger(r.aseoExtraDays)||r.aseoExtraDays>days)r.errors.push('Las jornadas de ASEO deben ser días enteros dentro del mes.');
   if(![0,1].includes(r.sheetExtrasActive))r.errors.push('El origen de horas extras no es válido.');
   if(!Number.isInteger(r.sheetExtraDays)||r.sheetExtraDays>days||!Number.isSafeInteger(r.sheetExtraPay))r.errors.push('Revisa los días y el importe de horas extras de planilla.');
@@ -19,7 +20,7 @@
   if(r.sheetExtrasActive&&(r.replacementDays||r.overtimeHours||r.aseoExtraDays))r.errors.push('Las horas extras de planilla reemplazan los otros adicionales. No combines ambos orígenes.');
   if(!r.sheetExtrasActive&&(r.sheetExtraDays||r.sheetExtraAseoDays||r.sheetExtraHours||r.sheetExtraPay))r.errors.push('Falta identificar el origen de las horas extras de planilla.');
   if(r.sheetExtrasActive&&((r.sheetExtraDays+r.sheetExtraAseoDays>0&&!(r.sheetExtraHours>0))||(r.sheetExtraHours>0&&(!(r.sheetExtraDays+r.sheetExtraAseoDays)||!r.sheetExtraPay))||(r.sheetExtraPay>0&&!r.sheetExtraHours)))r.errors.push('Completa días, horas e importe de las horas extras de planilla.');
-  if(r.worked+r.absent+r.vacation>days)r.errors.push('La asistencia y las ausencias superan los días del mes.');
+  if(r.worked+r.absent+r.vacation+r.medicalDays>days)r.errors.push('La asistencia, vacaciones, ausencias y licencias superan los días del mes.');
   if(!Number.isSafeInteger(r.advance))r.errors.push('Los anticipos deben ser un monto entero en pesos.');
   if(r.errors.length)return r;
   if(!w||!rules){r.pending.push('Falta la configuración del trabajador o las reglas de cálculo.');return r;}
@@ -30,7 +31,7 @@
   r.replacementPay=round(dailyRate*r.replacementDays)||0;r.overtimePay=round(dailyRate*r.overtimeHours/8)||0;
   r.aseoExtraPay=round(dailyRate*r.aseoExtraDays*1.5)||0;
   r.vacationPay=w.salaryBasis==='day'?(round(dailyRate*r.vacation)||0):0;
-  if(r.worked===0&&r.absent===0&&r.vacation===0)r.pending.push('Registra los días de asistencia o de ausencia para calcular el período.');
+  if(r.worked===0&&r.absent===0&&r.vacation===0&&r.medicalDays===0)r.pending.push('Registra los días de asistencia o de ausencia para calcular el período.');
   r.kind=w.employmentType==='honorarios'?'honorarios':'employee';r.insurance=r.kind==='employee'?insurance?.[w.id]:null;r.rulesVersion=rules.version;
   if(r.kind==='honorarios'){
    const contract=rules.honorarios?.[w.id],rate=rules.honorariosRetentionByYear?.[Number(d.period.slice(0,4))];
@@ -42,6 +43,7 @@
    if(r.overtimeHours)r.incomeRows.push({label:'Horas extras / cobertura ('+r.overtimeHours+' horas)',amount:r.overtimePay,note:'8 horas equivalen a un día y 4 horas a medio día, según la regla acordada'});
    if(r.aseoExtraDays)r.incomeRows.push({label:'Jornadas extra ASEO con 50% ('+r.aseoExtraDays+' días)',amount:r.aseoExtraPay});
    if(r.sheetExtrasActive&&r.sheetExtraHours)r.incomeRows.push({label:'Horas extras de planilla ('+r.sheetExtraHours+(r.sheetExtraHours===1?' hora)':' horas)'),amount:r.sheetOvertimePay,note:[r.sheetExtraDays?r.sheetExtraDays+' día(s) de reemplazo/doble turno':'',r.sheetExtraAseoDays?r.sheetExtraAseoDays+' día(s) de ASEO en domingo/feriado':'','Importe registrado en Google Sheets'].filter(Boolean).join(' · ')});
+   for(const a of w.allowances||[]){let amount;if(a.basis==='worked-day')amount=round(a.amount*r.worked);else if(a.basis==='day')amount=round(a.amount*(r.worked+r.replacementDays));else if(a.basis==='month')amount=round(a.amount*Math.max(0,30-r.absent)/30);else{r.pending.push('Falta la regla de pago de '+a.label+'.');continue;}r.gross+=amount;r.incomeRows.push({label:a.label,amount,note:a.basis==='worked-day'?'Tarifa diaria × '+r.worked+' días efectivos de asistencia':''});}
    r.withholding=contract?.receiverWithholds?round(r.gross*(rate||0)):0;r.selfPpm=contract?.receiverWithholds?0:round(r.gross*(rate||0));
    r.deductionRows=[{label:'Retención del receptor',amount:r.withholding},{label:'Anticipos',amount:r.advance}];r.totalDeductions=r.withholding+r.advance;r.preAdvanceNet=r.gross-r.withholding;
    r.warnings.push(contract?.receiverWithholds?'El receptor retiene el impuesto de honorarios.':'Boleta sin retención del receptor: el prestador declara y paga su PPM. El PPM informativo no se descuenta de esta transferencia.');
@@ -52,27 +54,29 @@
   r.pending.push(...(w.pending||[]));
   if(!r.insurance)r.pending.push('Faltan los datos previsionales del trabajador.');
   else for(const k of ['afpRate','healthRate','afcRate'])if(typeof r.insurance[k]!=='number'||r.insurance[k]<0||r.insurance[k]>1)r.pending.push('Falta una tasa previsional válida: '+k+'.');
-  const fraction=Math.max(0,30-r.absent)/30;
+  const unpaidDays=r.absent+r.medicalDays,fraction=Math.max(0,30-unpaidDays)/30;
+  if(r.medicalDays)r.warnings.push('Licencia médica: '+r.medicalDays+' días. El total a transferir corresponde al cargo del condominio y no incluye el subsidio de licencia.');
   if(w.salaryBasis==='day')r.baseAfterAbsences=round(w.dailyRate*r.worked);
-  else{r.absenceSalaryDiscount=Math.min(w.base,round(w.base*r.absent/30));r.baseAfterAbsences=w.base-r.absenceSalaryDiscount;}
-  r.incomeRows.push({label:w.salaryBasis==='day'?'Sueldo base ('+r.worked+' días)':r.vacation?'Sueldo base (incluye vacaciones pagadas)':'Sueldo base del período',amount:r.baseAfterAbsences,taxable:true,note:(r.absenceSalaryDiscount?'Base mensual menos descuento por ausencias':'Sueldo configurado')+(r.vacation&&w.salaryBasis!=='day'?' · '+r.vacation+' días de vacaciones remuneradas incluidos':'')});
+  else{r.absenceSalaryDiscount=Math.min(w.base,round(w.base*unpaidDays/30));r.baseAfterAbsences=w.base-r.absenceSalaryDiscount;}
+  r.incomeRows.push({label:w.salaryBasis==='day'?'Sueldo base ('+r.worked+' días)':r.vacation?'Sueldo base (incluye vacaciones pagadas)':'Sueldo base del período',amount:r.baseAfterAbsences,taxable:true,note:(r.medicalDays?'Base mensual proporcional a días de cargo del condominio':r.absenceSalaryDiscount?'Base mensual menos descuento por ausencias':'Sueldo configurado')+(r.vacation&&w.salaryBasis!=='day'?' · '+r.vacation+' días de vacaciones remuneradas incluidos':'')});
   if(r.vacation&&w.salaryBasis==='day')r.incomeRows.push({label:'Vacaciones pagadas ('+r.vacation+' días)',amount:r.vacationPay,taxable:true,note:'Tarifa diaria × días de vacaciones; no se descuentan como ausencia'});
-  if(r.absenceSalaryDiscount)r.adjustments.push({label:'Sueldo: base mensual ÷ 30 × '+r.absent+' día(s)',amount:r.absenceSalaryDiscount});
+  if(r.absenceSalaryDiscount)r.adjustments.push({label:'Sueldo: base mensual ÷ 30 × '+unpaidDays+' día(s)'+(r.medicalDays?' (incluye licencia médica)':''),amount:r.absenceSalaryDiscount});
   if(r.replacementDays)r.incomeRows.push({label:'Reemplazos ('+r.replacementDays+' días)',amount:r.replacementPay,taxable:true,note:'Valor del día del trabajador × días adicionales'});
   if(r.overtimeHours)r.incomeRows.push({label:'Horas extras / cobertura ('+r.overtimeHours+' horas)',amount:r.overtimePay,taxable:true,note:'8 horas equivalen a un día y 4 horas a medio día, según la regla acordada'});
   if(r.aseoExtraDays)r.incomeRows.push({label:'Jornadas extra ASEO con 50% ('+r.aseoExtraDays+' días)',amount:r.aseoExtraPay,taxable:true,note:'Valor del día × 1,5 × jornadas adicionales asignadas'});
   if(r.sheetExtrasActive&&r.sheetExtraHours)r.incomeRows.push({label:'Horas extras de planilla ('+r.sheetExtraHours+(r.sheetExtraHours===1?' hora)':' horas)'),amount:r.sheetOvertimePay,taxable:true,note:[r.sheetExtraDays?r.sheetExtraDays+' día(s) de reemplazo/doble turno':'',r.sheetExtraAseoDays?r.sheetExtraAseoDays+' día(s) de ASEO en domingo/feriado':'','Importe registrado en Google Sheets'].filter(Boolean).join(' · ')});
   for(const a of w.allowances||[]){
    let amount=a.amount,note='';
-   if(a.basis==='day'){amount=round(a.amount*(r.worked+r.replacementDays));note='Tarifa diaria × '+(r.worked+r.replacementDays)+' días y reemplazos';}
+   if(a.basis==='worked-day'){amount=round(a.amount*r.worked);note='Tarifa diaria × '+r.worked+' días efectivos de asistencia';}
+   else if(a.basis==='day'){amount=round(a.amount*(r.worked+r.replacementDays));note='Tarifa diaria × '+(r.worked+r.replacementDays)+' días y reemplazos';}
    else if(a.basis!=='month'){r.pending.push('Falta la regla de pago de '+a.label+'.');continue;}
    else if(a.label==='Bono asistencia'){
-    if(r.absent>0){amount=round(a.amount*fraction);const discount=a.amount-amount;r.attendanceBonusLoss+=discount;note='Proporcional a los días sin goce';r.adjustments.push({label:'Bono asistencia: descuento proporcional',amount:discount});}
-   }else if(a.taxable&&r.absent>0){
-    if(rules.fixedBonusAbsencePolicy==='prorate'){const discount=a.amount-round(a.amount*fraction);amount=a.amount-discount;r.fixedBonusesDiscount+=discount;note='Proporcional a los días sin goce';r.adjustments.push({label:a.label+': descuento proporcional',amount:discount});}
+    if(unpaidDays>0){amount=round(a.amount*fraction);const discount=a.amount-amount;r.attendanceBonusLoss+=discount;note='Proporcional a los días de cargo del condominio';r.adjustments.push({label:'Bono asistencia: descuento proporcional',amount:discount});}
+   }else if(a.taxable&&unpaidDays>0){
+    if(rules.fixedBonusAbsencePolicy==='prorate'){const discount=a.amount-round(a.amount*fraction);amount=a.amount-discount;r.fixedBonusesDiscount+=discount;note=r.medicalDays?'Proporcional a días de cargo del condominio':'Proporcional a los días sin goce';r.adjustments.push({label:a.label+': descuento proporcional',amount:discount});}
     else if(rules.fixedBonusAbsencePolicy!=='fixed')r.pending.push('Falta definir el descuento por ausencia de '+a.label+'.');
-   }else if(!a.taxable&&r.absent>0){
-    if(rules.nonTaxableAbsencePolicy==='prorate'){amount=round(a.amount*fraction);note='Proporcional a los días sin goce';r.adjustments.push({label:a.label+': descuento proporcional',amount:a.amount-amount});}
+   }else if(!a.taxable&&unpaidDays>0){
+    if(rules.nonTaxableAbsencePolicy==='prorate'){amount=round(a.amount*fraction);note=r.medicalDays?'Proporcional a días de cargo del condominio':'Proporcional a los días sin goce';r.adjustments.push({label:a.label+': descuento proporcional',amount:a.amount-amount});}
     else if(rules.nonTaxableAbsencePolicy==='fixed')note='Se mantiene completa según la regla acordada';
     else r.pending.push('Falta definir el pago de '+a.label+' con inasistencias.');
    }

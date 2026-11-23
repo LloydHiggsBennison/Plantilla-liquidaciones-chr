@@ -2,6 +2,10 @@
 
 El envío individual de pre nóminas por Gmail se configura según [la guía de correo](docs/envio-prenominas.md). Los destinatarios sin correo confirmado quedan excluidos y cada mensaje adjunta únicamente el PDF de su trabajador.
 
+**Actualización de noviembre:** el botón **Actualizar desde Google Sheets** importa y guarda automáticamente los borradores válidos del mes seleccionado, conserva anticipos y bloqueos de transferencias, y carga el resultado recalculado en el formulario. El archivo Excel mantiene la revisión manual antes de aplicar cambios. Las horas extras se toman del importe de **Horas Extras Trabajadores**, incluida su disposición actual con **Vacaciones en H y Total en I**. Las vacaciones sin horas ni importe no generan HHEE. Se reconocen las listas de días que Google convierte en fechas usando el texto visible y su conteo explícito.
+
+Noviembre de 2026 usa UF del 30/11 de **$41.439,89**, UTM de **$72.440**, y topes AFP/salud de **90 UF** y cesantía de **135,2 UF**. Fuentes: [UF SII](https://www.sii.cl/valores_y_fechas/uf/uf2026.htm), [UTM SII](https://www.sii.cl/valores_y_fechas/utm/utm2026.htm), [topes SP](https://www.spensiones.cl/portal/institucional/594/w3-article-16921.html). Las licencias confirmadas se registran como `medicalDays`, separadas de las faltas, y el subsidio no se incluye en la transferencia del condominio. Las licencias no confirmadas siguen requiriendo revisión.
+
 Aplicación estática para calcular liquidaciones de sueldo a partir de un selector de trabajador, días de asistencia, ausencias sin goce y anticipos. Exporta el detalle y el total a transferir en PDF A4.
 
 ## Ejecutar localmente

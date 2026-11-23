@@ -36,10 +36,11 @@ function parse(sheets,period,resolve){
  if(!sheet)return {present:false,records,issues};
  const header=sheet.rows.find(r=>normalize(r.cells[1]?.value)==='TRABAJADOR');
  const aseoColumn=normalize(header?.cells[5]?.value)==='HHEE ASEO',offset=aseoColumn?1:0;
- if(!header||[[3,'MES'],[4,'DIA'],[5+offset,'CANTIDAD TOTAL DIAS'],[6+offset,'CANTIDAD HORAS'],[7+offset,'TOTAL']].some(([col,title])=>normalize(header.cells[col]?.value)!==title)){
+ const vacationColumn=normalize(header?.cells[7+offset]?.value)==='VACACIONES'?7+offset:0,payColumn=7+offset+(vacationColumn?1:0);
+ if(!header||[[3,'MES'],[4,'DIA'],[5+offset,'CANTIDAD TOTAL DIAS'],[6+offset,'CANTIDAD HORAS'],[payColumn,'TOTAL']].some(([col,title])=>normalize(header.cells[col]?.value)!==title)){
   issues.push({sheet:sheet.name,message:'Verifica los encabezados Trabajador, Mes, Día, HHEE Aseo, Cantidad total días, Cantidad Horas y Total.'});return {present:true,records,issues,invalidLayout:true};
  }
- const source=(row,cell)=>({sheet:sheet.name,row:row.index,cell:cell||'A'+row.index+':'+(aseoColumn?'H':'G')+row.index});
+ const source=(row,cell)=>({sheet:sheet.name,row:row.index,cell:cell||'A'+row.index+':'+String.fromCharCode(64+payColumn)+row.index});
  let aseoControlled=false;
  for(const row of sheet.rows){
   if(row.index<=header.index)continue;const value=i=>row.cells[i]?.value,name=String(value(1)||'').trim();
@@ -47,22 +48,32 @@ function parse(sheets,period,resolve){
   if(aseoColumn)aseoControlled=true;
   const worker=resolve(name),ref=source(row);
   if(!worker){issues.push({...ref,message:'Trabajador sin correspondencia en horas extras: '+name});continue;}
-  let record=records.get(worker.id);if(!record){record={worker:worker.id,days:new Set(),observedDays:new Set(),aseoDays:0,observedAseoDays:0,hours:0,rawPay:0,events:[],issues:[]};records.set(worker.id,record);}
+  let record=records.get(worker.id);if(!record){record={worker:worker.id,days:new Set(),observedDays:new Set(),vacationDates:new Set(),aseoDays:0,observedAseoDays:0,hours:0,rawPay:0,events:[],issues:[]};records.set(worker.id,record);}
   try{
-   const list=dates(value(4),period),count=number(value(5+offset)),aseoDays=aseoColumn?(number(value(5))??0):0,hours=number(value(6+offset)),pay=number(value(7+offset));
-   for(const date of list)record.observedDays.add(date);
+   const count=number(value(5+offset)),aseoDays=aseoColumn?(number(value(5))??0):0,hours=number(value(6+offset)),pay=number(value(payColumn)),vacation=vacationColumn?(number(value(vacationColumn))??0):0;
+   const cell=row.cells[4]||{};let dayValue=value(4);
+   if(cell.numberFormat?.type==='DATE'&&count>1&&/^d{1,2}-m{1,2}(?:-yy)?$/i.test(cell.numberFormat.pattern||'')){
+    let visible=cell.formattedValue;
+    if(dayValue instanceof Date){visible=dayValue.getUTCDate()+'-'+(dayValue.getUTCMonth()+1)+(cell.numberFormat.pattern.toLowerCase().endsWith('-yy')?'-'+String(dayValue.getUTCFullYear()).slice(-2):'');}
+    if(/^\d{1,2}(?:-\d{1,2})+$/.test(visible||'')&&visible.split('-').length===count)dayValue=visible;
+   }
+   const list=dates(dayValue,period),end=new Date(Number(period.slice(0,4)),Number(period.slice(5,7)),0).getDate();
+   if(!Number.isInteger(vacation)||vacation<0||vacation>end)throw Error('Indica una cantidad válida de vacaciones pagadas.');
+   const vacationOnly=vacation>0&&vacation===list.length&&!(hours>0)&&pay===0&&aseoDays===0;
+   if(!vacationOnly)for(const date of list)record.observedDays.add(date);
    if(!Number.isInteger(aseoDays)||aseoDays<0||aseoDays>new Date(Number(period.slice(0,4)),Number(period.slice(5,7)),0).getDate())throw Error('Indica una cantidad entera de días en HHEE Aseo dentro del mes.');
    record.observedAseoDays+=aseoDays;
    if(count!==null&&(!Number.isInteger(count)||count<0||count!==list.length))throw Error('La cantidad total de días no coincide con los días indicados.');
    if(hours!==null&&(!Number.isFinite(hours)||hours<0))throw Error('Indica una cantidad de horas válida.');
    if(pay===null||!Number.isFinite(pay)||pay<0)throw Error('Completa el importe Total de horas extras.');
-   if((list.length||aseoDays)&&!(hours>0))throw Error('Completa Cantidad Horas para los días indicados y HHEE Aseo.');
+   if(!vacationOnly&&(list.length||aseoDays)&&!(hours>0))throw Error('Completa Cantidad Horas para los días indicados y HHEE Aseo.');
    if((hours||pay)&&!list.length&&!aseoDays)throw Error('Indica los días en que se realizaron las horas extras.');
    if(hours>0&&pay<=0)throw Error('Completa el importe Total para las horas registradas.');
    if(list.some(date=>record.days.has(date)))throw Error('Hay fechas duplicadas para el trabajador en este mes.');
    if(aseoDays&&record.aseoDays)throw Error('Registra HHEE Aseo en una sola fila por trabajador y mes.');
-   for(const date of list)record.days.add(date);record.aseoDays+=aseoDays;record.hours+=hours||0;record.rawPay+=pay;
-   record.events.push({...ref,kind:'sheetExtras',credit:'sheetExtraPay',dates:list,hours:hours||0,days:list.length,aseoDays,pay:Math.round(pay),text:name});
+   if(vacationOnly)for(const date of list){record.vacationDates.add(date);record.events.push({...ref,kind:'vacation',date,text:name,observation:'Vacaciones pagadas indicadas en Horas Extras Trabajadores'});}
+   else for(const date of list)record.days.add(date);record.aseoDays+=aseoDays;record.hours+=hours||0;record.rawPay+=pay;
+   record.events.push({...ref,kind:'sheetExtras',credit:'sheetExtraPay',dates:vacationOnly?[]:list,hours:hours||0,days:vacationOnly?0:list.length,aseoDays,pay:Math.round(pay),text:name});
   }catch(error){const item={...ref,worker:worker.id,message:error.message};record.issues.push(item);issues.push(item);}
  }
  for(const record of records.values()){record.pay=Math.round(record.rawPay);record.dayCount=record.issues.length?record.observedDays.size:record.days.size;record.dates=[...record.observedDays].sort();}
