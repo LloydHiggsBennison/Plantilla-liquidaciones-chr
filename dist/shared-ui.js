@@ -45,9 +45,10 @@ async function refreshShared(){
  finally{refreshing=false;$('refresh-board').disabled=false;}
 }
 function downloadBlob(blob,name){const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),5000);}
-$('worker').innerHTML=WORKERS.map(w=>'<option value="'+w.id+'">'+escapeHtml(w.name)+' · '+escapeHtml(w.role)+'</option>').join('');
+const orderedWorkers=[...WORKERS].sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
+$('worker').innerHTML=orderedWorkers.map(w=>'<option value="'+w.id+'">'+escapeHtml(w.name)+' · '+escapeHtml(w.role)+'</option>').join('');
 $('total-staff').textContent=$('team-count').textContent=WORKERS.length;
-$('team-grid').innerHTML=WORKERS.map(w=>'<article class="worker-card"><span class="worker-avatar">'+initials(w.name)+'</span><div><strong>'+escapeHtml(w.name)+'</strong><small>'+escapeHtml(w.role)+'</small></div></article>').join('');
+$('team-grid').innerHTML=orderedWorkers.map(w=>'<article class="worker-card"><span class="worker-avatar">'+initials(w.name)+'</span><div><strong>'+escapeHtml(w.name)+'</strong><small>'+escapeHtml(w.role)+'</small></div></article>').join('');
 const today=new Date();$('period').value=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0');
 document.querySelector('.private').textContent=committee?'Comité de administración · Solo lectura':'Administración';
 document.querySelector('[data-view=history]').innerHTML='<span>▦</span> Transferencias';
