@@ -1,4 +1,5 @@
 const crypto=require('node:crypto');
+const {isDeepStrictEqual}=require('node:util');
 const {StoreError}=require('./draft-store.cjs');
 const SENDER='requerimientoshr@gmail.com';
 const ORGANIZATION='Condominio Horizonte de Reñaca';
@@ -18,7 +19,7 @@ function key(env){if(!env.AUTH_SESSION_SECRET)throw new StoreError(503,'Falta co
 function seal(value,env){const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',key(env),iv),bytes=Buffer.concat([cipher.update(JSON.stringify(value),'utf8'),cipher.final()]);return Buffer.concat([iv,cipher.getAuthTag(),bytes]).toString('base64url');}
 function unseal(token,env){try{if(typeof token!=='string'||token.length>30000)throw Error();const bytes=Buffer.from(token,'base64url'),dec=crypto.createDecipheriv('aes-256-gcm',key(env),bytes.subarray(0,12));dec.setAuthTag(bytes.subarray(12,28));return JSON.parse(Buffer.concat([dec.update(bytes.subarray(28)),dec.final()]).toString('utf8'));}catch{throw new StoreError(400,'La revisión de destinatarios no es válida. Ábrela nuevamente.');}}
 function documentHash(snapshot){return hash({worker:{id:snapshot.worker.id,name:snapshot.worker.name,role:snapshot.worker.role},data:snapshot.data,result:snapshot.result});}
-function validDraft(record,worker,period){return record?.id===worker.id+'_'+period&&record.worker===worker.id&&record.period===period&&record.data?.worker===worker.id&&record.data?.period===period&&record.snapshot?.worker?.id===worker.id&&record.snapshot?.data?.worker===worker.id&&record.snapshot?.data?.period===period&&record.snapshot?.result?.ready===true&&Array.isArray(record.snapshot.result.errors)&&record.snapshot.result.errors.length===0&&Number.isFinite(record.snapshot.result.transfer);}
+function validDraft(record,worker,period){return record?.id===worker.id+'_'+period&&record.worker===worker.id&&record.period===period&&record.data?.worker===worker.id&&record.data?.period===period&&record.snapshot?.worker?.id===worker.id&&record.snapshot.worker.name===worker.name&&record.snapshot?.data?.worker===worker.id&&record.snapshot?.data?.period===period&&isDeepStrictEqual(record.snapshot.data,record.data)&&record.snapshot?.result?.ready===true&&Array.isArray(record.snapshot.result.errors)&&record.snapshot.result.errors.length===0&&Number.isFinite(record.snapshot.result.transfer);}
 function pdf(record){const {jsPDF}=require('jspdf'),build=require('../dist/pdf.js');const {worker,data,result}=record.snapshot;return Buffer.from(build(jsPDF,worker,data,result,{informational:true}).output('arraybuffer'));}
 function transport(env){if(!configured(env))throw new StoreError(503,'Configura GMAIL_APP_PASSWORD en Vercel para habilitar los envíos.');return require('nodemailer').createTransport({host:'smtp.gmail.com',port:465,secure:true,auth:{user:SENDER,pass:password(env)},connectionTimeout:10000,greetingTimeout:10000,socketTimeout:20000,disableFileAccess:true,disableUrlAccess:true});}
 class PrenominaMail{

@@ -35,6 +35,14 @@ test('una revisión vencida o Gmail sin configurar nunca inicia un envío',async
  let now=1000;mail.now=()=>now;const r=await mail.preview('2026-10',admin);now+=16*60*1000;await assert.rejects(()=>mail.send({token:r.token,worker:'worker-1'},admin),e=>e.status===409);
  mail.env={...env,GMAIL_APP_PASSWORD:''};const next=await mail.preview('2026-10',admin);assert.equal(next.configured,false);await assert.rejects(()=>mail.send({token:next.token,worker:'worker-1'},admin),e=>e.status===503);assert.equal(delivered.length,0);
 }));
+
+test('rechaza un PDF con nombre o datos de otra persona aunque conserve el mismo identificador',async()=>fixture(async({mail,service,delivered})=>{
+ const original=await service.store.get('worker-1_2026-10');let current=original;
+ for(const snapshot of [{...original.snapshot,worker:{...original.snapshot.worker,name:'Persona02'}},{...original.snapshot,data:{...original.snapshot.data,advance:999999}}]){
+  current=await service.store.compareAndSet({...original,revision:current.revision+1,snapshot},current.revision);const review=await mail.preview('2026-10',admin);assert.equal(review.rows.find(r=>r.worker==='worker-1').eligible,false);await assert.rejects(()=>mail.send({token:review.token,worker:'worker-1'},admin),e=>e.status===400);
+ }
+ assert.equal(delivered.length,0);
+}));
 test('dos pulsaciones o procesos simultáneos solo generan un envío del mismo documento',async()=>fixture(async({mail,delivered})=>{
  const r=await mail.preview('2026-10',admin),input={token:r.token,worker:'worker-1'};const result=await Promise.all([mail.send(input,admin),mail.send(input,admin)]);assert.equal(delivered.length,1);assert(result.some(x=>x.status==='sent'));assert(result.some(x=>x.alreadyProcessed));
 }));
